@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Updated color tokens for magical fairy-tale theme */
+  --background: oklch(1 0 0); /* Pure white for clarity */
+  --foreground: oklch(0.35 0 0); /* Dark gray for text */
+  --card: oklch(0.97 0 0); /* Light gray for dreamy atmosphere */
+  --card-foreground: oklch(0.25 0 0); /* Text over cards */
+  --popover: oklch(1 0 0); /* White popover backgrounds */
+  --popover-foreground: oklch(0.25 0 0); /* Text in popovers */
+  --primary: oklch(0.65 0.15 160); /* Emerald green for vitality */
+  --primary-foreground: oklch(1 0 0); /* White text on primary */
+  --secondary: oklch(0.6 0.2 260); /* Soft blue for harmony */
+  --secondary-foreground: oklch(1 0 0); /* White text on secondary */
+  --muted: oklch(0.97 0 0); /* Light gray for muted elements */
+  --muted-foreground: oklch(0.35 0 0); /* Muted text color */
+  --accent: oklch(0.7 0.15 50); /* Warm accent for magical effects */
+  --accent-foreground: oklch(1 0 0); /* White text on accents */
+  --destructive: oklch(0.6 0.2 20); /* Red for errors */
+  --destructive-foreground: oklch(1 0 0); /* White text on destructive */
+  --border: oklch(0.9 0 0); /* Light borders */
+  --input: oklch(1 0 0); /* White input fields */
+  --ring: oklch(0.65 0.15 160 / 0.5); /* Emerald ring effects */
+  /* Emotion-based chart colors for aura visualization */
+  --chart-1: oklch(0.65 0.15 160); /* Positive emotions - emerald */
+  --chart-2: oklch(0.6 0.2 260); /* Neutral emotions - blue */
+  --chart-3: oklch(0.75 0.2 80); /* Surprise - yellow */
+  --chart-4: oklch(0.6 0.2 20); /* Negative emotions - red */
+  --chart-5: oklch(0.55 0.2 220); /* Calm emotions - deep blue */
+  --radius: 1rem; /* Softer corner rounding */
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.25 0 0);
+  --sidebar-primary: oklch(0.65 0.15 160);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.6 0.2 260);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.65 0.15 160 / 0.5);
+}
+
+.dark {
+  --background: oklch(0.08 0 0); /* Deep dark for contrast */
+  --foreground: oklch(0.95 0 0); /* Light text */
+  --card: oklch(0.12 0 0); /* Dark cards */
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.08 0 0);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.7 0.15 160); /* Brighter emerald in dark mode */
+  --primary-foreground: oklch(0.08 0 0);
+  --secondary: oklch(0.65 0.2 260); /* Brighter blue in dark mode */
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.15 0 0);
+  --muted-foreground: oklch(0.6 0 0);
+  --accent: oklch(0.75 0.15 50); /* Brighter accent in dark mode */
+  --accent-foreground: oklch(0.08 0 0);
+  --destructive: oklch(0.65 0.2 20);
+  --destructive-foreground: oklch(0.95 0 0);
+  --border: oklch(0.15 0 0);
+  --input: oklch(0.12 0 0);
+  --ring: oklch(0.7 0.15 160 / 0.5);
+  --chart-1: oklch(0.7 0.15 160);
+  --chart-2: oklch(0.65 0.2 260);
+  --chart-3: oklch(0.8 0.2 80);
+  --chart-4: oklch(0.65 0.2 20);
+  --chart-5: oklch(0.6 0.2 220);
+  --sidebar: oklch(0.1 0 0);
+  --sidebar-foreground: oklch(0.95 0 0);
+  --sidebar-primary: oklch(0.7 0.15 160);
+  --sidebar-primary-foreground: oklch(0.08 0 0);
+  --sidebar-accent: oklch(0.65 0.2 260);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.15 0 0);
+  --sidebar-ring: oklch(0.7 0.15 160 / 0.5);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .aura-glow {
+    filter: drop-shadow(0 0 20px currentColor) drop-shadow(0 0 40px currentColor);
+  }
+
+  .magical-gradient {
+    background: linear-gradient(45deg, oklch(0.65 0.15 160), oklch(0.6 0.2 260), oklch(0.75 0.2 80), oklch(0.7 0.15 50));
+    background-size: 400% 400%;
+    animation: magical-flow 8s ease-in-out infinite;
+  }
+
+  .particle-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .mirror-frame {
+    background: linear-gradient(135deg, oklch(0.9 0.05 50), oklch(0.95 0.02 60), oklch(0.9 0.05 50));
+    border: 2px solid oklch(0.8 0.1 50);
+    box-shadow: inset 0 2px 4px oklch(1 0 0 / 0.3), 0 8px 32px oklch(0.65 0.15 160 / 0.2);
+  }
+}
+
+@keyframes magical-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-20px) rotate(120deg);
+  }
+  66% {
+    transform: translateY(10px) rotate(240deg);
+  }
+}
+
+@keyframes pulse-aura {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
