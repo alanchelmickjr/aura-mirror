@@ -157,19 +157,21 @@ export default function AuraMirror() {
       </div>
 
       {/* Main Mirror Interface */}
-      <div className="flex flex-col items-center justify-center min-h-screen p-8 relative z-10">
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8 relative z-10">
         {/* Mirror Title */}
-        <div className="text-center mb-8">
-          <h1 className="text-6xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent mb-4">
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent mb-2 sm:mb-4">
             Aura Mirror
           </h1>
-          <p className="text-xl text-muted-foreground">Discover your true colors through the magic of emotion</p>
+          <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-4">
+            Discover your true colors through the magic of emotion
+          </p>
         </div>
 
         {/* Main Mirror Display */}
-        <Card className="mirror-frame p-8 max-w-4xl w-full relative overflow-hidden">
+        <Card className="mirror-frame p-4 sm:p-6 lg:p-8 max-w-sm sm:max-w-2xl lg:max-w-4xl w-full relative overflow-hidden">
           {/* Video Feed */}
-          <div className="relative aspect-video rounded-2xl overflow-hidden mb-6">
+          <div className="relative aspect-video rounded-xl sm:rounded-2xl overflow-hidden mb-4 sm:mb-6">
             <video
               ref={videoRef}
               autoPlay
@@ -184,7 +186,7 @@ export default function AuraMirror() {
 
             {/* Aura Overlay */}
             <div
-              className="absolute inset-0 rounded-2xl aura-glow"
+              className="absolute inset-0 rounded-xl sm:rounded-2xl aura-glow"
               style={{
                 background: `radial-gradient(ellipse at center, ${auraState.colors[0]}20 0%, ${auraState.colors[1] || auraState.colors[0]}10 50%, transparent 70%)`,
                 animation: `pulse-aura ${2 + auraState.intensity * 2}s ease-in-out infinite`,
@@ -192,15 +194,15 @@ export default function AuraMirror() {
             />
 
             {/* Emotion Indicators */}
-            <div className="absolute top-4 left-4 space-y-2">
+            <div className="absolute top-2 sm:top-4 left-2 sm:left-4 space-y-1 sm:space-y-2">
               {emotions.slice(0, 3).map((emotion, index) => (
                 <div
                   key={emotion.name}
-                  className="flex items-center space-x-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1"
+                  className="flex items-center space-x-1 sm:space-x-2 bg-black/50 backdrop-blur-sm rounded-full px-2 sm:px-3 py-1"
                 >
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: emotion.color }} />
-                  <span className="text-white text-sm capitalize font-medium">{emotion.name}</span>
-                  <div className="w-16 h-1 bg-white/20 rounded-full overflow-hidden">
+                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: emotion.color }} />
+                  <span className="text-white text-xs sm:text-sm capitalize font-medium">{emotion.name}</span>
+                  <div className="w-12 sm:w-16 h-1 bg-white/20 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -216,34 +218,37 @@ export default function AuraMirror() {
 
           {/* Mirror Message */}
           <div className="text-center">
-            <div className="magical-gradient p-6 rounded-2xl">
-              <p className="text-2xl font-semibold text-white mb-2">{mirrorMessage}</p>
-              <p className="text-white/80">
+            <div className="magical-gradient p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+              <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-white mb-1 sm:mb-2">{mirrorMessage}</p>
+              <p className="text-sm sm:text-base text-white/80">
                 Primary Aura: <span className="capitalize font-bold">{auraState.primaryEmotion}</span>
               </p>
             </div>
           </div>
 
           {/* Decorative Elements */}
-          <div className="absolute top-4 right-4">
-            <div className="w-16 h-16 rounded-full magical-gradient opacity-60 particle-float" />
+          <div className="absolute top-2 sm:top-4 right-2 sm:right-4">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 lg:w-16 lg:h-16 rounded-full magical-gradient opacity-60 particle-float" />
           </div>
-          <div className="absolute bottom-4 left-4">
-            <div className="w-12 h-12 rounded-full bg-accent/40 particle-float" style={{ animationDelay: "2s" }} />
+          <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4">
+            <div
+              className="w-6 h-6 sm:w-8 sm:h-8 lg:w-12 lg:h-12 rounded-full bg-accent/40 particle-float"
+              style={{ animationDelay: "2s" }}
+            />
           </div>
         </Card>
 
         {/* Status Indicator */}
-        <div className="mt-6 flex items-center space-x-4">
-          <div className={`w-3 h-3 rounded-full ${isActive ? "bg-primary" : "bg-muted"} animate-pulse`} />
-          <span className="text-sm text-muted-foreground">
+        <div className="mt-4 sm:mt-6 flex items-center space-x-3 sm:space-x-4">
+          <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${isActive ? "bg-primary" : "bg-muted"} animate-pulse`} />
+          <span className="text-xs sm:text-sm text-muted-foreground">
             {isActive ? "Mirror is active - detecting your aura..." : "Initializing magical mirror..."}
           </span>
         </div>
 
         {/* Instructions */}
-        <div className="mt-8 text-center max-w-2xl">
-          <p className="text-muted-foreground">
+        <div className="mt-6 sm:mt-8 text-center max-w-xs sm:max-w-lg lg:max-w-2xl px-4">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Step into view and let the mirror reveal your emotional aura. The colors and effects will change based on
             your expressions and voice. No interaction needed - just be yourself! ✨
           </p>
