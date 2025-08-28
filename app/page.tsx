@@ -1,9 +1,18 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
+import { VoiceInterface } from "@/components/voice-interface"
+import { VideoProcessor } from "@/components/video-processor"
+import { AuraVisualization } from "@/components/aura-visualization"
+import { useHumeVoice } from "@/hooks/use-hume-voice"
+import { useWakeWord } from "@/hooks/use-wake-word"
+import { useFacialEmotions } from "@/hooks/use-facial-emotions"
+import { EmotionProcessor } from "@/lib/hume/emotion-processor"
+import { HumeWebSocketManager } from "@/lib/hume/websocket-manager"
+import type { EmotionData, ProsodyData, VocalBurst } from "@/lib/hume/types"
 
-interface EmotionData {
+interface ProcessedEmotion {
   name: string
   score: number
   color: string
@@ -17,9 +26,9 @@ interface AuraState {
 }
 
 export default function AuraMirror() {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isActive, setIsActive] = useState(false)
+  const [wsManager, setWsManager] = useState<HumeWebSocketManager | null>(null)
+  const [emotionProcessor, setEmotionProcessor] = useState<EmotionProcessor | null>(null)
   const [auraState, setAuraState] = useState<AuraState>({
     primaryEmotion: "neutral",
     intensity: 0.5,
@@ -27,10 +36,26 @@ export default function AuraMirror() {
     particles: [],
   })
   const [mirrorMessage, setMirrorMessage] = useState("Mirror, mirror on the wall...")
-  const [emotions, setEmotions] = useState<EmotionData[]>([])
+  const [processedEmotions, setProcessedEmotions] = useState<ProcessedEmotion[]>([])
+  const [prosodyData, setProsodyData] = useState<ProsodyData | null>(null)
+  const [vocalBurst, setVocalBurst] = useState<VocalBurst | null>(null)
+  const [conversationActive, setConversationActive] = useState(false)
+
+  // Hooks for Hume integration
+  const {
+    isConnected,
+    isRecording,
+    connect,
+    disconnect,
+    messages,
+    sendMessage
+  } = useHumeVoice()
+  
+  const { isListening, detected } = useWakeWord({ wakePhrase: "mirror mirror on the wall" })
+  const { emotions: facialEmotions, isProcessing } = useFacialEmotions()
 
   // Emotion to color mapping
-  const emotionColors = {
+  const emotionColors: Record<string, string> = {
     joy: "#fbbf24", // Golden yellow
     excitement: "#f97316", // Orange
     love: "#ec4899", // Pink
@@ -43,64 +68,272 @@ export default function AuraMirror() {
     sadness: "#3b82f6", // Blue
     disgust: "#84cc16", // Lime
     neutral: "#6366f1", // Indigo
+    admiration: "#a855f7", // Purple
+    amusement: "#facc15", // Yellow
+    anxiety: "#94a3b8", // Slate
+    boredom: "#6b7280", // Gray
+    concentration: "#0ea5e9", // Sky
+    confusion: "#f97316", // Orange
+    contemplation: "#8b5cf6", // Violet
+    determination: "#dc2626", // Red
+    disappointment: "#64748b", // Slate
+    distress: "#b91c1c", // Dark red
+    doubt: "#9ca3af", // Gray
+    ecstasy: "#fbbf24", // Gold
+    embarrassment: "#f87171", // Light red
+    empathy: "#c084fc", // Purple
+    envy: "#65a30d", // Green
+    guilt: "#7c3aed", // Violet
+    horror: "#1e293b", // Dark
+    interest: "#0891b2", // Cyan
+    nostalgia: "#c084fc", // Light purple
+    pain: "#991b1b", // Dark red
+    pride: "#fbbf24", // Gold
+    realization: "#facc15", // Yellow
+    relief: "#86efac", // Light green
+    romance: "#f9a8d4", // Pink
+    satisfaction: "#34d399", // Green
+    shame: "#9f1239", // Dark pink
+    sympathy: "#e9d5ff", // Light purple
+    tiredness: "#6b7280", // Gray
+    triumph: "#fde047", // Bright yellow
   }
 
-  // Initialize camera and start emotion detection
+  // Initialize WebSocket and Emotion Processor
   useEffect(() => {
-    const initializeCamera = async () => {
+    const initializeHume = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1920, height: 1080 },
-          audio: true,
-        })
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
+        // Get API key from environment variables (client-side)
+        const apiKey = typeof window !== 'undefined'
+          ? window.location.hostname === 'localhost'
+            ? 'test-api-key' // Use test key for local development
+            : ''
+          : ''
+        const configId = typeof window !== 'undefined' ? '' : ''
+        
+        // Create proper HumeConfig object
+        const config = {
+          apiKey,
+          configId,
+          websocketUrl: 'wss://api.hume.ai/v0/stream/models',
+          enabledFeatures: {
+            emotions: true,
+            prosody: true,
+            facial: true,
+            vocalBursts: true,
+            speech: true,
+            evi2: false
+          },
+          reconnect: {
+            enabled: true,
+            maxAttempts: 5,
+            initialDelay: 1000,
+            maxDelay: 30000,
+            backoffMultiplier: 2
+          }
         }
+        
+        const manager = new HumeWebSocketManager(config)
+        const processor = new EmotionProcessor()
+        
+        setWsManager(manager)
+        setEmotionProcessor(processor)
+        
+        // Connect WebSocket
+        await manager.connect()
+        
+        // Set up event listeners using the WebSocket's message handler
+        // Listen for WebSocket messages
+        const handleMessage = (message: any) => {
+          if (message.type === 'emotion' && message.data) {
+            const emotionScores = message.data.predictions?.[0]?.emotions || []
+            const processed = processor.processEmotionData(emotionScores)
+            const formattedEmotions = processed.emotions.map((e: any) => ({
+              emotion: e.name,
+              score: e.score
+            }))
+            updateFromEmotions(formattedEmotions)
+          } else if (message.type === 'prosody' && message.data) {
+            setProsodyData(message.data)
+            const processed = processor.processProsodyData(message.data)
+            updateFromProsody(processed)
+          } else if (message.type === 'vocal_burst' && message.data) {
+            setVocalBurst(message.data)
+            handleVocalBurst(message.data)
+          }
+        }
+        
+        // We'll need to set up the message handler differently
+        // For now, let's use a simplified approach
+        
         setIsActive(true)
-        startEmotionDetection()
       } catch (error) {
-        console.error("Camera access denied:", error)
-        // Simulate emotions for demo
-        simulateEmotions()
+        console.error("Failed to initialize Hume:", error)
       }
     }
 
-    initializeCamera()
+    initializeHume()
+
+    return () => {
+      wsManager?.disconnect()
+    }
   }, [])
 
-  // Simulate emotion detection for demo purposes
-  const simulateEmotions = () => {
-    const emotionNames = Object.keys(emotionColors)
+  // Handle wake word detection
+  useEffect(() => {
+    if (detected && !conversationActive) {
+      startConversation()
+    }
+  }, [detected, conversationActive])
 
-    setInterval(() => {
-      const randomEmotions = emotionNames
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 3)
-        .map((name) => ({
-          name,
-          score: Math.random() * 0.8 + 0.2,
-          color: emotionColors[name as keyof typeof emotionColors],
-        }))
+  // Combine emotions from all sources
+  useEffect(() => {
+    if (!emotionProcessor) return
 
-      setEmotions(randomEmotions)
-      updateAura(randomEmotions)
-      updateMirrorMessage(randomEmotions[0])
-    }, 2000)
+    const sources = []
+    if (facialEmotions && facialEmotions.length > 0) {
+      sources.push({
+        data: {
+          emotions: facialEmotions,
+          timestamp: Date.now(),
+          dominantEmotion: facialEmotions[0]?.name
+        },
+        weight: 0.5
+      })
+    }
+    if (prosodyData?.emotions && prosodyData.emotions.length > 0) {
+      sources.push({
+        data: {
+          emotions: prosodyData.emotions,
+          timestamp: Date.now(),
+          dominantEmotion: prosodyData.emotions[0]?.name
+        },
+        weight: 0.5
+      })
+    }
+    
+    const combined = sources.length > 0
+      ? emotionProcessor.combineEmotionSources(sources)
+      : { emotions: [], timestamp: Date.now() }
+
+    const processed = combined.emotions.map((emotion: any) => ({
+      name: emotion.name,
+      score: emotion.score,
+      color: emotionColors[emotion.name] || "#6366f1"
+    }))
+
+    setProcessedEmotions(processed)
+    updateAura(processed)
+  }, [facialEmotions, prosodyData, emotionProcessor])
+
+  const startConversation = useCallback(async () => {
+    setConversationActive(true)
+    setMirrorMessage("Yes, my dear? What would you like to know?")
+    
+    // Start recording for voice interaction
+    if (!isConnected) {
+      await connect()
+    }
+    
+    // Auto-stop conversation after 30 seconds of inactivity
+    setTimeout(() => {
+      if (conversationActive) {
+        stopConversation()
+      }
+    }, 30000)
+  }, [isConnected, connect, conversationActive])
+
+  const stopConversation = useCallback(async () => {
+    setConversationActive(false)
+    setMirrorMessage("Mirror, mirror on the wall...")
+    
+    if (isConnected) {
+      await disconnect()
+    }
+  }, [isConnected, disconnect])
+
+  const updateFromEmotions = (emotions: Array<{ emotion: string; score: number }>) => {
+    const processed = emotions.map(e => ({
+      name: e.emotion,
+      score: e.score,
+      color: emotionColors[e.emotion] || "#6366f1"
+    }))
+    
+    setProcessedEmotions((prev: ProcessedEmotion[]) => {
+      // Merge with existing emotions, prioritizing new ones
+      const merged = [...processed]
+      prev.forEach((existing: ProcessedEmotion) => {
+        if (!merged.find(e => e.name === existing.name)) {
+          merged.push({ ...existing, score: existing.score * 0.8 }) // Decay old emotions
+        }
+      })
+      return merged.slice(0, 5) // Keep top 5
+    })
   }
 
-  const startEmotionDetection = () => {
-    // In a real implementation, this would connect to Hume.ai WebSocket
-    // For now, we'll simulate the emotion detection
-    simulateEmotions()
+  const updateFromProsody = (prosody: any) => {
+    if (prosody.dominantEmotion) {
+      updateMirrorMessage({
+        name: prosody.dominantEmotion,
+        score: prosody.confidence || 0.5
+      })
+    }
   }
 
-  const updateAura = (emotionData: EmotionData[]) => {
-    const primary = emotionData[0]
+  const handleVocalBurst = (burst: VocalBurst) => {
+    // Add special effects for vocal bursts
+    const burstMessages: Record<string, string> = {
+      laugh: "Your laughter brightens the realm! 😄",
+      sigh: "I sense a weight upon your soul... 💭",
+      gasp: "What surprises you so? 😮",
+      cry: "Your tears are precious, dear one... 💧",
+      scream: "Such intensity! 😱",
+      yawn: "Rest well when you need to... 😴"
+    }
+    
+    if (burstMessages[burst.type]) {
+      setMirrorMessage(burstMessages[burst.type])
+      
+      // Add burst particles
+      addBurstParticles(burst.type)
+    }
+  }
+
+  const addBurstParticles = (burstType: string) => {
+    const burstColors: Record<string, string> = {
+      laugh: "#fbbf24",
+      sigh: "#6b7280",
+      gasp: "#f59e0b",
+      cry: "#3b82f6",
+      scream: "#ef4444",
+      yawn: "#c084fc"
+    }
+    
+    const color = burstColors[burstType] || "#ffffff"
+    const particles = Array.from({ length: 30 }, (_, i) => ({
+      id: Date.now() + i,
+      x: 40 + Math.random() * 20,
+      y: 40 + Math.random() * 20,
+      size: Math.random() * 12 + 6,
+      color
+    }))
+    
+    setAuraState((prev: AuraState) => ({
+      ...prev,
+      particles: [...prev.particles.slice(-20), ...particles]
+    }))
+  }
+
+  const updateAura = (emotions: ProcessedEmotion[]) => {
+    if (emotions.length === 0) return
+    
+    const primary = emotions[0]
     const intensity = primary.score
-    const colors = emotionData.map((e) => e.color)
+    const colors = emotions.map(e => e.color)
 
-    // Generate magical particles
-    const newParticles = Array.from({ length: Math.floor(intensity * 20) }, (_, i) => ({
+    // Generate magical particles based on emotion intensity
+    const particleCount = Math.floor(intensity * 15) + 5
+    const newParticles = Array.from({ length: particleCount }, (_, i) => ({
       id: Date.now() + i,
       x: Math.random() * 100,
       y: Math.random() * 100,
@@ -112,12 +345,12 @@ export default function AuraMirror() {
       primaryEmotion: primary.name,
       intensity,
       colors,
-      particles: newParticles,
+      particles: [...newParticles, ...auraState.particles].slice(0, 50), // Keep max 50 particles
     })
   }
 
-  const updateMirrorMessage = (emotion: EmotionData) => {
-    const messages = {
+  const updateMirrorMessage = (emotion: { name: string; score: number }) => {
+    const messages: Record<string, string> = {
       joy: "Your radiant joy illuminates the realm! ✨",
       excitement: "Such vibrant energy flows through you! 🌟",
       love: "Your heart glows with the warmest light! 💖",
@@ -130,16 +363,32 @@ export default function AuraMirror() {
       sadness: "Blue depths hold wisdom and healing! 💙",
       disgust: "Your discerning nature protects your light! 🛡️",
       neutral: "Your balanced aura holds infinite potential! ⚖️",
+      admiration: "Your appreciation creates golden threads! ⭐",
+      amusement: "Playful spirits dance around you! 🎭",
+      anxiety: "Breathe deep, the storm shall pass... 🌬️",
+      concentration: "Your focused mind cuts through the veil! 🎯",
+      confusion: "The mists will clear, revealing truth... 🌫️",
+      determination: "Unbreakable will forges your path! ⚔️",
+      empathy: "Your compassion bridges all souls! 🌈",
+      interest: "Curiosity opens magical doorways! 🚪",
+      nostalgia: "Memories shimmer like starlight... ✨",
+      pride: "You stand tall in your achievements! 👑",
+      relief: "Peace washes over you like moonlight! 🌙",
+      satisfaction: "Fulfillment glows within your core! 🌟",
+      sympathy: "Your kindness heals the world! 💝",
+      triumph: "Victory's light crowns you! 🏆"
     }
 
-    setMirrorMessage(messages[emotion.name as keyof typeof messages] || "Your unique essence is beautiful! ✨")
+    if (!conversationActive) {
+      setMirrorMessage(messages[emotion.name] || "Your unique essence is beautiful! ✨")
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-card to-background overflow-hidden relative">
       {/* Magical Background Particles */}
       <div className="absolute inset-0 pointer-events-none">
-        {auraState.particles.map((particle) => (
+        {auraState.particles.map((particle: any) => (
           <div
             key={particle.id}
             className="absolute rounded-full particle-float opacity-60"
@@ -164,38 +413,27 @@ export default function AuraMirror() {
             Aura Mirror
           </h1>
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-4">
-            Discover your true colors through the magic of emotion
+            Say "Mirror Mirror on the Wall" to begin your magical journey
           </p>
         </div>
 
         {/* Main Mirror Display */}
         <Card className="mirror-frame p-4 sm:p-6 lg:p-8 max-w-sm sm:max-w-2xl lg:max-w-4xl w-full relative overflow-hidden">
-          {/* Video Feed */}
+          {/* Video Feed with Processor */}
           <div className="relative aspect-video rounded-xl sm:rounded-2xl overflow-hidden mb-4 sm:mb-6">
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-              style={{
-                filter: `hue-rotate(${auraState.intensity * 180}deg) saturate(${1 + auraState.intensity})`,
-                transform: "scaleX(-1)", // Mirror effect
-              }}
+            <VideoProcessor
+              className="w-full h-full"
             />
 
             {/* Aura Overlay */}
-            <div
-              className="absolute inset-0 rounded-xl sm:rounded-2xl aura-glow"
-              style={{
-                background: `radial-gradient(ellipse at center, ${auraState.colors[0]}20 0%, ${auraState.colors[1] || auraState.colors[0]}10 50%, transparent 70%)`,
-                animation: `pulse-aura ${2 + auraState.intensity * 2}s ease-in-out infinite`,
-              }}
+            <AuraVisualization 
+              emotions={processedEmotions}
+              intensity={auraState.intensity}
             />
 
             {/* Emotion Indicators */}
             <div className="absolute top-2 sm:top-4 left-2 sm:left-4 space-y-1 sm:space-y-2">
-              {emotions.slice(0, 3).map((emotion, index) => (
+              {processedEmotions.slice(0, 3).map((emotion: ProcessedEmotion) => (
                 <div
                   key={emotion.name}
                   className="flex items-center space-x-1 sm:space-x-2 bg-black/50 backdrop-blur-sm rounded-full px-2 sm:px-3 py-1"
@@ -214,7 +452,34 @@ export default function AuraMirror() {
                 </div>
               ))}
             </div>
+
+            {/* Prosody Indicator */}
+            {prosodyData && (
+              <div className="absolute top-2 sm:top-4 right-2 sm:right-4 space-y-1 sm:space-y-2">
+                <div className="bg-black/50 backdrop-blur-sm rounded-full px-2 sm:px-3 py-1">
+                  <span className="text-white text-xs sm:text-sm">
+                    Voice: {prosodyData.pitch.mean > 0.5 ? "↑" : "↓"} {Math.round(prosodyData.energy.mean * 100)}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Vocal Burst Indicator */}
+            {vocalBurst && (
+              <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4">
+                <div className="bg-accent/80 backdrop-blur-sm rounded-full px-3 py-1 animate-pulse">
+                  <span className="text-white text-sm capitalize">{vocalBurst.type}</span>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Voice Interface for Conversation */}
+          {conversationActive && (
+            <div className="mb-4">
+              <VoiceInterface className="w-full" />
+            </div>
+          )}
 
           {/* Mirror Message */}
           <div className="text-center">
@@ -238,19 +503,33 @@ export default function AuraMirror() {
           </div>
         </Card>
 
-        {/* Status Indicator */}
-        <div className="mt-4 sm:mt-6 flex items-center space-x-3 sm:space-x-4">
-          <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${isActive ? "bg-primary" : "bg-muted"} animate-pulse`} />
-          <span className="text-xs sm:text-sm text-muted-foreground">
-            {isActive ? "Mirror is active - detecting your aura..." : "Initializing magical mirror..."}
-          </span>
+        {/* Status Indicators */}
+        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${isActive ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
+            <span className="text-xs text-muted-foreground">System</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-yellow-500"} animate-pulse`} />
+            <span className="text-xs text-muted-foreground">Voice AI</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${isListening ? "bg-blue-500" : "bg-gray-500"} animate-pulse`} />
+            <span className="text-xs text-muted-foreground">Wake Word</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${isProcessing ? "bg-purple-500" : "bg-gray-500"} animate-pulse`} />
+            <span className="text-xs text-muted-foreground">Facial Analysis</span>
+          </div>
         </div>
 
         {/* Instructions */}
         <div className="mt-6 sm:mt-8 text-center max-w-xs sm:max-w-lg lg:max-w-2xl px-4">
           <p className="text-sm sm:text-base text-muted-foreground">
-            Step into view and let the mirror reveal your emotional aura. The colors and effects will change based on
-            your expressions and voice. No interaction needed - just be yourself! ✨
+            {conversationActive 
+              ? "Speak naturally - the mirror is listening to your voice and watching your expressions..."
+              : "Step into view and say 'Mirror Mirror on the Wall' to activate the magical mirror. Your emotions will create a unique aura!"
+            }
           </p>
         </div>
       </div>
