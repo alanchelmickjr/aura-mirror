@@ -1,0 +1,22 @@
+{
+  "name": "Aura Mirror - Magical Emotion Reflection",
+  "short_name": "Aura Mirror",
+  "description": "An interactive mirror that reveals your emotional aura through AI-powered emotion detection",
+  "start_url": "/",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

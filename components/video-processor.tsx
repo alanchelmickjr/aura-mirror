@@ -23,6 +23,9 @@ interface VideoProcessorProps {
   enableEffects?: boolean;
   showDebugInfo?: boolean;
   className?: string;
+  hueRotation?: number;
+  saturation?: number;
+  brightness?: number;
 }
 
 interface ProcessingState {
@@ -48,7 +51,10 @@ export function VideoProcessor({
   enableSegmentation = true,
   enableEffects = true,
   showDebugInfo = false,
-  className = ''
+  className = '',
+  hueRotation = 0,
+  saturation = 1,
+  brightness = 1
 }: VideoProcessorProps) {
   // Refs for video and canvas elements
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -85,11 +91,11 @@ export function VideoProcessor({
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
       
-      console.log('Available video devices:', videoDevices.map(d => ({
-        deviceId: d.deviceId,
-        label: d.label,
-        kind: d.kind
-      })));
+      // console.log('Available video devices:', videoDevices.map(d => ({
+      //   deviceId: d.deviceId,
+      //   label: d.label,
+      //   kind: d.kind
+      // })));
 
       // Priority order for Mac cameras
       const preferences = [
@@ -105,7 +111,7 @@ export function VideoProcessor({
           device.label.toLowerCase().includes(preference)
         );
         if (device) {
-          console.log(`Selected camera: ${device.label} (${device.deviceId})`);
+          // console.log(`Selected camera: ${device.label} (${device.deviceId})`);
           return device.deviceId;
         }
       }
@@ -117,13 +123,13 @@ export function VideoProcessor({
       );
 
       if (nonPhoneDevice) {
-        console.log(`Selected fallback camera: ${nonPhoneDevice.label}`);
+      // console.log(`Selected fallback camera: ${nonPhoneDevice.label}`);
         return nonPhoneDevice.deviceId;
       }
 
       // Last resort: use the first device
       if (videoDevices.length > 0) {
-        console.log(`Using first available camera: ${videoDevices[0].label}`);
+      // console.log(`Using first available camera: ${videoDevices[0].label}`);
         return videoDevices[0].deviceId;
       }
 
@@ -138,7 +144,7 @@ export function VideoProcessor({
    * Initialize camera and processing modules
    */
   const initialize = useCallback(async () => {
-    console.log('VideoProcessor: Starting initialization...');
+  // console.log('VideoProcessor: Starting initialization...');
     
     // First, test if we can access navigator.mediaDevices
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -151,33 +157,32 @@ export function VideoProcessor({
       setState(prev => ({ ...prev, error: null }));
 
       // Use simple camera constraints like SimpleCamera
-      console.log('VideoProcessor: Requesting basic camera access...');
+    // console.log('VideoProcessor: Requesting basic camera access...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: false
       });
 
-      console.log('VideoProcessor: Camera stream obtained:', stream.getVideoTracks()[0]?.label);
+    // console.log('VideoProcessor: Camera stream obtained:', stream.getVideoTracks()[0]?.label);
 
       streamRef.current = stream;
 
       // Set up video element
-      console.log('VideoProcessor: Setting up video element...');
+    // console.log('VideoProcessor: Setting up video element...');
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        console.log('VideoProcessor: Starting video playback...');
+      // console.log('VideoProcessor: Starting video playback...');
         await videoRef.current.play();
         
         // Wait for video to be ready with timeout
-        console.log('VideoProcessor: Waiting for video metadata...');
+      // console.log('VideoProcessor: Waiting for video metadata...');
         await new Promise((resolve, reject) => {
           if (videoRef.current) {
             const video = videoRef.current;
             
             // Set up success handler
             const onMetadata = () => {
-              console.log('VideoProcessor: Video metadata loaded, dimensions:', 
-                video.videoWidth, 'x', video.videoHeight);
+            // console.log('VideoProcessor: Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
               video.removeEventListener('loadedmetadata', onMetadata);
               clearTimeout(timeout);
               resolve(undefined);
@@ -185,14 +190,14 @@ export function VideoProcessor({
             
             // Set up timeout
             const timeout = setTimeout(() => {
-              console.warn('VideoProcessor: Metadata timeout, proceeding anyway...');
+              // console.warn('VideoProcessor: Metadata timeout, proceeding anyway...');
               video.removeEventListener('loadedmetadata', onMetadata);
               resolve(undefined);
             }, 5000); // 5 second timeout
             
             // Check if metadata is already loaded
             if (video.readyState >= 1) {
-              console.log('VideoProcessor: Video metadata already loaded');
+              // console.log('VideoProcessor: Video metadata already loaded');
               clearTimeout(timeout);
               resolve(undefined);
             } else {
@@ -207,7 +212,7 @@ export function VideoProcessor({
         const videoWidth = videoRef.current?.videoWidth || 640;
         const videoHeight = videoRef.current?.videoHeight || 480;
         
-        console.log('VideoProcessor: Setting canvas dimensions:', videoWidth, 'x', videoHeight);
+        // console.log('VideoProcessor: Setting canvas dimensions:', videoWidth, 'x', videoHeight);
         
         if (canvasRef.current) {
           canvasRef.current.width = videoWidth;
@@ -222,7 +227,7 @@ export function VideoProcessor({
 
       // Initialize facial analyzer
       if (enableFacialAnalysis && (apiKey || wsManager)) {
-        console.log('VideoProcessor: Initializing facial analysis...');
+        // console.log('VideoProcessor: Initializing facial analysis...');
         facialAnalyzerRef.current = new FacialAnalyzer({
           apiKey: apiKey || '',
           frameRate: 10,
@@ -236,31 +241,37 @@ export function VideoProcessor({
         if (videoRef.current) {
           await facialAnalyzerRef.current.initialize(videoRef.current, wsManager);
         }
-        console.log('VideoProcessor: Facial analysis initialized');
+        // console.log('VideoProcessor: Facial analysis initialized');
       } else {
-        console.log('VideoProcessor: Skipping facial analysis (disabled or no API key)');
+        // console.log('VideoProcessor: Skipping facial analysis (disabled or no API key)');
       }
 
       // Initialize person segmentation
       if (enableSegmentation) {
-        console.log('VideoProcessor: Initializing segmentation...');
-        segmentationRef.current = new PersonSegmentation({
-          modelType: 'general',
-          smoothSegmentation: true,
-          backgroundBlurAmount: 10,
-          edgeBlurAmount: 3,
-          enableColorization: enableEffects,
-          enableWebGL: true,
-          targetFPS: 30
-        });
+      // console.log('VideoProcessor: Initializing segmentation...');
+        try {
+          segmentationRef.current = new PersonSegmentation({
+            modelType: 'general',
+            smoothSegmentation: true,
+            backgroundBlurAmount: 10,
+            edgeBlurAmount: 3,
+            enableColorization: enableEffects,
+            enableWebGL: false,
+            targetFPS: 30
+          });
 
-        await segmentationRef.current.initialize();
-        console.log('VideoProcessor: Segmentation initialized');
+        // console.log('VideoProcessor: PersonSegmentation instance created');
+          await segmentationRef.current.initialize();
+        // console.log('VideoProcessor: Segmentation initialized successfully');
+        } catch (error) {
+          console.error('VideoProcessor: Segmentation initialization failed:', error);
+          segmentationRef.current = null;
+        }
       } else {
-        console.log('VideoProcessor: Skipping segmentation (disabled)');
+      // console.log('VideoProcessor: Skipping segmentation (disabled)');
       }
 
-      console.log('VideoProcessor: Initialization complete!');
+    // console.log('VideoProcessor: Initialization complete!');
       setState(prev => ({
         ...prev,
         isInitialized: true,
@@ -282,7 +293,7 @@ export function VideoProcessor({
           errorMessage = 'Camera is already in use by another application. Please close other applications using the camera and try again.';
         } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
           // Try fallback with simpler constraints
-          console.log('Retrying with fallback constraints...');
+        // console.log('Retrying with fallback constraints...');
           try {
             const fallbackStream = await navigator.mediaDevices.getUserMedia({
               video: true,
@@ -323,10 +334,10 @@ export function VideoProcessor({
    * Start processing video frames
    */
   const startProcessing = useCallback(() => {
-    console.log('VideoProcessor: startProcessing called, isInitialized:', state.isInitialized, 'isProcessing:', state.isProcessing);
+  // console.log('VideoProcessor: startProcessing called, isInitialized:', state.isInitialized, 'isProcessing:', state.isProcessing);
     if (!state.isInitialized || state.isProcessing) return;
 
-    console.log('VideoProcessor: Starting video processing...');
+  // console.log('VideoProcessor: Starting video processing...');
     isProcessingRef.current = true;
     setState(prev => ({ ...prev, isProcessing: true }));
 
@@ -351,7 +362,7 @@ export function VideoProcessor({
     // Start render loop
     const render = async () => {
       if (!isProcessingRef.current) {
-        console.log('VideoProcessor: Render stopped, not processing');
+      // console.log('VideoProcessor: Render stopped, not processing');
         return;
       }
 
@@ -364,7 +375,7 @@ export function VideoProcessor({
       animationFrameRef.current = requestAnimationFrame(render);
     };
 
-    console.log('VideoProcessor: Starting render loop...');
+  // console.log('VideoProcessor: Starting render loop...');
     render();
   }, [state.isInitialized, state.isProcessing]);
 
@@ -373,19 +384,19 @@ export function VideoProcessor({
    */
   const processFrame = async () => {
     if (!videoRef.current || !canvasRef.current) {
-      console.log('VideoProcessor: processFrame - missing refs, video:', !!videoRef.current, 'canvas:', !!canvasRef.current);
+    // console.log('VideoProcessor: processFrame - missing refs, video:', !!videoRef.current, 'canvas:', !!canvasRef.current);
       return;
     }
 
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) {
-      console.log('VideoProcessor: processFrame - no 2d context');
+    // console.log('VideoProcessor: processFrame - no 2d context');
       return;
     }
 
     // Log occasionally for debugging
     if (Math.random() < 0.01) { // Log ~1% of frames
-      console.log('VideoProcessor: Drawing frame...');
+    // console.log('VideoProcessor: Drawing frame...');
     }
 
     // Apply person segmentation if enabled
@@ -398,16 +409,54 @@ export function VideoProcessor({
           confidence: 0.8
         };
 
-        const result = await segmentationRef.current.processFrame(
-          videoRef.current,
-          emotionData
-        );
+      // console.log('VideoProcessor: Processing frame with segmentation');
+      // console.log('VideoProcessor: About to call processFrame with video element:', !!videoRef.current);
+        
+        // Check video element dimensions before processing
+        if (!videoRef.current || videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0) {
+          console.warn('VideoProcessor: Video element has invalid dimensions, skipping segmentation:', {
+            element: !!videoRef.current,
+            width: videoRef.current?.videoWidth || 0,
+            height: videoRef.current?.videoHeight || 0,
+            readyState: videoRef.current?.readyState || 0
+          });
+          // Fallback to drawing video directly
+          ctx.drawImage(videoRef.current || new HTMLVideoElement(), 0, 0, canvasRef.current.width, canvasRef.current.height);
+          return;
+        }
+        
+      // console.log('VideoProcessor: Video dimensions are valid:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight);
+        
+        let result;
+        try {
+          result = await segmentationRef.current.processFrame(
+            videoRef.current,
+            emotionData
+          );
 
-        // Draw segmented result
+        // console.log('VideoProcessor: Segmentation result:', result.mask instanceof HTMLCanvasElement ? 'Canvas' : 'ImageData', 'confidence:', result.confidence);
+        } catch (segError) {
+          console.error('VideoProcessor: Segmentation processFrame failed:', segError);
+          throw segError; // Re-throw to trigger fallback
+        }
+
+        // First, clear the canvas with black background
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+        // Draw segmented result with proper scaling
         if (result.mask instanceof HTMLCanvasElement) {
-          ctx.drawImage(result.mask, 0, 0);
+        // console.log('VideoProcessor: Drawing segmented canvas');
+          ctx.drawImage(result.mask, 0, 0, canvasRef.current.width, canvasRef.current.height);
         } else {
-          ctx.putImageData(result.mask, 0, 0);
+        // console.log('VideoProcessor: Drawing segmented ImageData');
+          // For ImageData, we need to create a temporary canvas to scale it
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d')!;
+          tempCanvas.width = result.mask.width;
+          tempCanvas.height = result.mask.height;
+          tempCtx.putImageData(result.mask, 0, 0);
+          ctx.drawImage(tempCanvas, 0, 0, canvasRef.current.width, canvasRef.current.height);
         }
 
         // Update performance metrics
@@ -416,12 +465,12 @@ export function VideoProcessor({
           setState(prev => ({ ...prev, performance: metrics }));
         }
       } catch (error) {
-        // Fallback to drawing video directly
-        ctx.drawImage(videoRef.current, 0, 0);
+        // Fallback to drawing video directly with proper scaling
+        ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
       }
     } else {
-      // Draw video directly
-      ctx.drawImage(videoRef.current, 0, 0);
+      // Draw video directly with proper scaling
+      ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
     }
 
     // Draw overlays
@@ -454,9 +503,9 @@ export function VideoProcessor({
    * Handle emotion updates from facial analysis
    */
   const handleEmotionUpdate = (emotions: FacialExpression) => {
-    console.log('VideoProcessor: handleEmotionUpdate called with:', emotions);
+  // console.log('VideoProcessor: handleEmotionUpdate called with:', emotions);
     const processedEmotions = emotionProcessorRef.current.processFacialData(emotions);
-    console.log('VideoProcessor: processedEmotions:', processedEmotions);
+  // console.log('VideoProcessor: processedEmotions:', processedEmotions);
     
     // Update emotion display
     const topEmotions = processedEmotions.emotions
@@ -465,10 +514,10 @@ export function VideoProcessor({
       .map(e => ({
         name: e.name,
         score: e.score,
-        color: getEmotionColor(e.name)
+        color: getRotatedEmotionColor(e.name)
       }));
     
-    console.log('VideoProcessor: topEmotions:', topEmotions);
+  // console.log('VideoProcessor: topEmotions:', topEmotions);
     setCurrentEmotions(topEmotions);
     setDominantEmotion(processedEmotions.dominantEmotion || 'neutral');
     
@@ -478,7 +527,7 @@ export function VideoProcessor({
     
     // Notify parent component
     if (onEmotionUpdate) {
-      console.log('VideoProcessor: Calling onEmotionUpdate prop');
+    // console.log('VideoProcessor: Calling onEmotionUpdate prop');
       onEmotionUpdate(processedEmotions);
     }
   };
@@ -552,9 +601,93 @@ export function VideoProcessor({
       surprise: '#FF69B4',
       disgust: '#228B22',
       contempt: '#8B4513',
-      neutral: '#808080'
+      neutral: '#808080',
+      boredom: '#A0522D', // Sienna (brown-orange to match saturated appearance)
+      concentration: '#4682B4',
+      calmness: '#87CEEB',
+      excitement: '#FF4500',
+      love: '#FF1493'
     };
     return colors[emotion.toLowerCase()] || '#808080';
+  };
+
+  /**
+   * Apply hue rotation to a hex color
+   */
+  const applyHueRotation = (hexColor: string, hueRotation: number): string => {
+    // Convert hex to RGB
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+
+    // Convert RGB to HSL
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const diff = max - min;
+    const sum = max + min;
+    const lightness = sum / 2;
+
+    let saturation = 0;
+    let hue = 0;
+
+    if (diff !== 0) {
+      saturation = lightness > 0.5 ? diff / (2 - sum) : diff / sum;
+
+      switch (max) {
+        case r:
+          hue = ((g - b) / diff) + (g < b ? 6 : 0);
+          break;
+        case g:
+          hue = (b - r) / diff + 2;
+          break;
+        case b:
+          hue = (r - g) / diff + 4;
+          break;
+      }
+      hue /= 6;
+    }
+
+    // Apply hue rotation
+    hue = (hue + hueRotation / 360) % 1;
+    if (hue < 0) hue += 1;
+
+    // Convert HSL back to RGB
+    const hueToRgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    let newR, newG, newB;
+    if (saturation === 0) {
+      newR = newG = newB = lightness;
+    } else {
+      const q = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation;
+      const p = 2 * lightness - q;
+      newR = hueToRgb(p, q, hue + 1/3);
+      newG = hueToRgb(p, q, hue);
+      newB = hueToRgb(p, q, hue - 1/3);
+    }
+
+    // Convert back to hex
+    const toHex = (c: number) => {
+      const hex = Math.round(c * 255).toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    };
+
+    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+  };
+
+  /**
+   * Get hue-rotated color for emotion indicator
+   */
+  const getRotatedEmotionColor = (emotion: string): string => {
+    const baseColor = getEmotionColor(emotion);
+    return applyHueRotation(baseColor, hueRotation);
   };
 
   /**
@@ -604,7 +737,7 @@ export function VideoProcessor({
 
   // Initialize on mount
   useEffect(() => {
-    console.log('VideoProcessor: useEffect triggered, calling initialize');
+  // console.log('VideoProcessor: useEffect triggered, calling initialize');
     const initAsync = async () => {
       try {
         await initialize();
@@ -616,7 +749,7 @@ export function VideoProcessor({
     initAsync();
     
     return () => {
-      console.log('VideoProcessor: Component unmounting, cleaning up');
+    // console.log('VideoProcessor: Component unmounting, cleaning up');
       cleanup();
     };
   }, []); // Empty dependency array to run only on mount
@@ -643,6 +776,10 @@ export function VideoProcessor({
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full object-cover"
+        style={{
+          filter: `hue-rotate(${hueRotation}deg) saturate(${saturation}) brightness(${brightness})`,
+          transition: 'filter 10ms ease-out'
+        }}
       />
 
       {/* Overlay canvas for effects and annotations */}

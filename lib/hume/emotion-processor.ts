@@ -542,13 +542,40 @@ export class EmotionProcessor {
       return [];
     }
     
-    const total = emotions.reduce((sum, e) => sum + e.score, 0);
+    if (emotions.length === 0) {
+      console.debug('Empty emotions array provided');
+      return [];
+    }
+    
+    // Validate and filter emotions
+    const validEmotions = emotions.filter(emotion => {
+      if (!emotion || typeof emotion !== 'object') {
+        console.warn('Invalid emotion object:', emotion);
+        return false;
+      }
+      if (typeof emotion.name !== 'string' || emotion.name.length === 0) {
+        console.warn('Invalid emotion name:', emotion.name);
+        return false;
+      }
+      if (typeof emotion.score !== 'number' || isNaN(emotion.score) || emotion.score < 0) {
+        console.warn('Invalid emotion score:', emotion.score);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validEmotions.length === 0) {
+      console.warn('No valid emotions found after filtering');
+      return [];
+    }
+    
+    const total = validEmotions.reduce((sum, e) => sum + e.score, 0);
     
     if (total === 0) {
-      return emotions;
+      return validEmotions;
     }
 
-    return emotions.map(e => ({
+    return validEmotions.map(e => ({
       name: e.name,
       score: e.score / total,
     }));

@@ -1,25 +1,26 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { VoiceProvider } from '@/lib/hume/voice-provider'
 import { ErrorBoundary } from '@/components/error-boundary'
 import './globals.css'
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+  ],
+}
+
 export const metadata: Metadata = {
   title: 'Aura Mirror - Magical Emotion Reflection',
   description: 'An interactive mirror that reveals your emotional aura through AI-powered emotion detection',
   generator: 'Next.js',
   manifest: '/manifest.json',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#000000' },
-  ],
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon-16x16.png',

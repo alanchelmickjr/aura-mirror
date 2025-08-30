@@ -38,6 +38,7 @@ export default function AuraMirror() {
   })
   const [mirrorMessage, setMirrorMessage] = useState("Mirror, mirror on the wall...")
   const [processedEmotions, setProcessedEmotions] = useState<ProcessedEmotion[]>([])
+  const [videoProcessorEmotions, setVideoProcessorEmotions] = useState<ProcessedEmotion[]>([])
   const [prosodyData, setProsodyData] = useState<ProsodyData | null>(null)
   const [vocalBurst, setVocalBurst] = useState<VocalBurst | null>(null)
   const [conversationActive, setConversationActive] = useState(false)
@@ -66,7 +67,7 @@ export default function AuraMirror() {
     autoStart: true,
     frameRate: 5, // Lower frame rate for better performance
     onEmotionChange: (emotions) => {
-      console.log('Facial emotions detected:', emotions);
+      // console.log('Facial emotions detected:', emotions);
       const formattedEmotions = emotions.emotions.map((e: any) => ({
         emotion: e.name,
         score: e.score
@@ -74,6 +75,87 @@ export default function AuraMirror() {
       updateFromEmotions(formattedEmotions);
     }
   })
+
+  // VideoProcessor emotion color mapping (matches VideoProcessor component)
+  const getVideoProcessorEmotionColor = (emotion: string): string => {
+    const colors: Record<string, string> = {
+      joy: '#FFD700',
+      sadness: '#4169E1',
+      anger: '#DC143C',
+      fear: '#8B008B',
+      surprise: '#FF69B4',
+      disgust: '#228B22',
+      contempt: '#8B4513',
+      neutral: '#808080',
+      // Add more emotions with consistent colors
+      love: '#FF1493',
+      excitement: '#FF4500',
+      calmness: '#87CEEB',
+      contentment: '#98FB98',
+      admiration: '#9370DB',
+      amusement: '#FF69B4',
+      anxiety: '#8B4513',
+      concentration: '#4682B4',
+      contemplation: '#708090',
+      interest: '#20B2AA',
+      realization: '#00CED1',
+      annoyance: '#CD5C5C',
+      confusion: '#696969',
+      disappointment: '#483D8B',
+      distress: '#8B008B',
+      embarrassment: '#DC143C',
+      guilt: '#800020',
+      shame: '#8B4513',
+      gratitude: '#98FB98',
+      pride: '#4B0082'
+    };
+    return colors[emotion.toLowerCase()] || '#808080';
+  };
+
+  // Emotion to hue rotation mapping (0-360 degrees)
+  const getHueFromEmotion = (emotion: string): number => {
+    const hueMap: Record<string, number> = {
+      // Warm emotions - reds/oranges/yellows (0-60)
+      joy: 45,        // Golden yellow
+      excitement: 15, // Orange-red
+      love: 330,      // Pink-red
+      amusement: 50,  // Yellow
+      pride: 40,      // Gold
+      gratitude: 120, // Green
+
+      // Cool emotions - blues/purples (180-270)
+      sadness: 220,      // Blue
+      calmness: 200,     // Light blue
+      concentration: 210, // Sky blue
+      contemplation: 240, // Purple-blue
+      fear: 270,         // Purple
+
+      // Energetic emotions - magentas/reds (300-360)
+      anger: 0,          // Red
+      surprise: 300,     // Magenta
+      distress: 320,     // Red-purple
+
+      // Neutral/earthy emotions - greens/browns (60-180)
+      neutral: 0,        // No hue shift
+      boredom: 30,       // Brown-orange (to match saturated skin tones)
+      disgust: 100,      // Green
+      contentment: 140,  // Green-cyan
+      interest: 180,     // Cyan
+      realization: 190,  // Light cyan
+
+      // Complex emotions - mixed hues
+      admiration: 260,    // Violet
+      anxiety: 30,        // Brown-orange
+      confusion: 0,       // No shift
+      disappointment: 230, // Blue-purple
+      embarrassment: 350,  // Pink
+      guilt: 280,         // Dark purple
+      shame: 20,          // Brown
+      annoyance: 10,      // Red-orange
+    };
+    
+    return hueMap[emotion.toLowerCase()] || 0;
+  };
 
   // Emotion to color mapping
   const emotionColors: Record<string, string> = {
@@ -276,14 +358,14 @@ export default function AuraMirror() {
   }, [isConnected, disconnect])
 
   const updateFromEmotions = (emotions: Array<{ emotion: string; score: number }>) => {
-    console.log('Page: updateFromEmotions called with:', emotions);
+    // console.log('Page: updateFromEmotions called with:', emotions);
     const processed = emotions.map(e => ({
       name: e.emotion,
       score: e.score,
       color: emotionColors[e.emotion] || "#6366f1"
     }))
     
-    console.log('Page: processed emotions:', processed);
+    // console.log('Page: processed emotions:', processed);
     
     setProcessedEmotions((prev: ProcessedEmotion[]) => {
       // Merge with existing emotions, prioritizing new ones
@@ -294,7 +376,7 @@ export default function AuraMirror() {
         }
       })
       const result = merged.slice(0, 5); // Keep top 5
-      console.log('Page: Updated processedEmotions to:', result);
+      // console.log('Page: Updated processedEmotions to:', result);
       return result;
     })
   }
@@ -422,19 +504,86 @@ export default function AuraMirror() {
         enableSegmentation={false}
         enableEffects={true}
         showDebugInfo={true}
+        hueRotation={videoProcessorEmotions.length > 0 ? getHueFromEmotion(videoProcessorEmotions[0].name) : 0}
+        saturation={videoProcessorEmotions.length > 0 ? 2 + videoProcessorEmotions[0].score * 2 : 1}
+        brightness={videoProcessorEmotions.length > 0 ? 1.1 + videoProcessorEmotions[0].score * 0.3 : 1}
         onEmotionUpdate={(emotions) => {
-          console.log('Page: Emotions from VideoProcessor:', emotions);
+          // console.log('Page: Emotions from VideoProcessor:', emotions);
           const formattedEmotions = emotions.emotions.map((e: any) => ({
             emotion: e.name,
             score: e.score
           }));
-          console.log('Page: formattedEmotions:', formattedEmotions);
+          
+          // Also update video processor emotions for overlay
+          const videoEmotions = emotions.emotions
+            .sort((a: any, b: any) => b.score - a.score)
+            .slice(0, 5)
+            .map((e: any) => ({
+              name: e.name,
+              score: e.score,
+              color: getVideoProcessorEmotionColor(e.name)
+            }));
+          setVideoProcessorEmotions(videoEmotions);
+          
+          // console.log('Page: formattedEmotions:', formattedEmotions);
           updateFromEmotions(formattedEmotions);
         }}
         onFacesDetected={(faces) => {
-          console.log('Faces detected:', faces.length);
+          // console.log('Faces detected:', faces.length);
         }}
       />
+      
+      {/* Debug Info */}
+      <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-4 text-white text-xs max-w-xs">
+        <div className="font-semibold mb-2">Hue Filter Debug</div>
+        <div>VideoProcessor Emotions: {videoProcessorEmotions.length}</div>
+        {videoProcessorEmotions.length > 0 && (
+          <>
+            <div>Current emotion: {videoProcessorEmotions[0].name}</div>
+            <div>Hue rotation: {getHueFromEmotion(videoProcessorEmotions[0].name)}°</div>
+            <div>Saturation: {(2 + videoProcessorEmotions[0].score * 2).toFixed(2)}</div>
+            <div>Brightness: {(1.1 + videoProcessorEmotions[0].score * 0.3).toFixed(2)}</div>
+            <div>Score: {(videoProcessorEmotions[0].score * 100).toFixed(1)}%</div>
+            
+            {/* Show the actual color being displayed */}
+            <div className="mt-3 p-3 border border-white/20 rounded">
+              <div className="text-xs text-gray-300 mb-2">Bottom-left indicator color:</div>
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-8 h-8 rounded border-2 border-white/50" 
+                  style={{ backgroundColor: videoProcessorEmotions[0].color }}
+                />
+                <div>
+                  <div className="font-mono text-xs">{videoProcessorEmotions[0].color}</div>
+                  <div className="text-gray-400 text-xs">({videoProcessorEmotions[0].name})</div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-2 text-gray-300">All detected emotions:</div>
+            {videoProcessorEmotions.slice(0, 5).map((emotion, i) => (
+              <div key={emotion.name} className="text-xs flex items-center gap-1">
+                <div 
+                  className="w-3 h-3 rounded border border-white/30" 
+                  style={{ backgroundColor: emotion.color }}
+                />
+                {i + 1}. {emotion.name}: {(emotion.score * 100).toFixed(1)}% 
+                <span className="text-gray-400">({getHueFromEmotion(emotion.name)}°)</span>
+                {i === 0 && <span className="text-yellow-400">← DOMINANT</span>}
+              </div>
+            ))}
+            
+            <div className="mt-3 p-2 bg-yellow-900/30 rounded text-xs">
+              <div className="text-yellow-400 font-semibold">Expected for Yellow Video:</div>
+              <div>• Joy (45°) • Amusement (50°) • Excitement (15°)</div>
+              <div>• Gratitude (120°) • Pride (40°)</div>
+            </div>
+          </>
+        )}
+        <div className="mt-2 pt-2 border-t border-gray-600">
+          <div>Page Emotions: {processedEmotions.length}</div>
+        </div>
+      </div>
       
       {/* Emotion Overlay */}
       <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-4 max-w-xs">

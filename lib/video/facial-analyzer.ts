@@ -312,58 +312,81 @@ export class FacialAnalyzer {
    * Handle facial expression data from Hume
    */
   private handleFacialExpression(data: any): void {
-    console.log('Raw facial data from Hume:', JSON.stringify(data, null, 2));
-    
-    // Extract emotions from Hume's response format
-    let emotions: any[] = [];
-    if (data.predictions && data.predictions.length > 0) {
-      // Hume format: {predictions: [{emotions: [...]}]}
-      emotions = data.predictions[0].emotions || [];
-    } else if (data.emotions) {
-      // Direct emotions format
-      emotions = data.emotions;
-    }
-    
-    console.log('Extracted emotions:', emotions);
-    
-    // Convert to expected format
-    const facialData = {
-      emotions: emotions,
-      timestamp: Date.now(),
-      action_units: {},
-      head_pose: { pitch: 0, yaw: 0, roll: 0 },
-      gaze_direction: { x: 0, y: 0 }
-    };
-    
-    // Process emotions
-    const processedEmotions = this.emotionProcessor.processFacialData(facialData);
-    console.log('Processed emotions:', processedEmotions);
-    
-    // Notify emotion update listener
-    if (this.onEmotionUpdate) {
-      console.log('Calling onEmotionUpdate with facialData');
-      this.onEmotionUpdate(facialData);
-    }
-    
-    // Update face cache with emotion data
-    if (this.faceCache.size > 0) {
-      // Distribute emotions to detected faces
-      // In a real implementation, Hume would provide face-specific emotions
-      const faces = Array.from(this.faceCache.values());
-      faces.forEach(face => {
-        face.emotions = processedEmotions.emotions;
-        face.headPose = data.head_pose;
-        face.gazeDirection = data.gaze_direction;
-      });
-
-      if (this.onFacesDetected) {
-        this.onFacesDetected(faces);
+    try {
+      // console.log('Raw facial data from Hume:', JSON.stringify(data, null, 2));
+      
+      // Extract emotions from Hume's response format
+      let emotions: any[] = [];
+      if (data.predictions && data.predictions.length > 0) {
+        // Hume format: {predictions: [{emotions: [...]}]}
+        const prediction = data.predictions[0];
+        if (prediction && prediction.emotions && Array.isArray(prediction.emotions)) {
+          emotions = prediction.emotions;
+        }
+      } else if (data.emotions && Array.isArray(data.emotions)) {
+        // Direct emotions format
+        emotions = data.emotions;
       }
-    }
+      
+      // Validate emotions array
+      if (!Array.isArray(emotions) || emotions.length === 0) {
+        console.debug('No valid emotions found in facial data:', data);
+        return;
+      }
+      
+      // Validate emotion format - each emotion should have name and score
+      const validEmotions = emotions.filter(emotion => 
+        emotion && 
+        typeof emotion === 'object' && 
+        typeof emotion.name === 'string' && 
+        typeof emotion.score === 'number' &&
+        !isNaN(emotion.score)
+      );
+      
+      if (validEmotions.length === 0) {
+        console.debug('No valid emotion objects found in facial data');
+        return;
+      }
+      
+      // console.log('Extracted emotions:', validEmotions);
+      
+      // Convert to expected format
+      const facialData = {
+        emotions: validEmotions,
+        timestamp: Date.now(),
+        action_units: {},
+        head_pose: { pitch: 0, yaw: 0, roll: 0 },
+        gaze_direction: { x: 0, y: 0 }
+      };
+      
+      // Process emotions
+      const processedEmotions = this.emotionProcessor.processFacialData(facialData);
+      // console.log('Processed emotions:', processedEmotions);
+      
+      // Update face cache with emotion data
+      if (this.faceCache.size > 0) {
+        // Distribute emotions to detected faces
+        // In a real implementation, Hume would provide face-specific emotions
+        const faces = Array.from(this.faceCache.values());
+        faces.forEach(face => {
+          face.emotions = processedEmotions.emotions;
+          face.headPose = data.head_pose;
+          face.gazeDirection = data.gaze_direction;
+        });
 
-    // Notify emotion update listener
-    if (this.onEmotionUpdate) {
-      this.onEmotionUpdate(data);
+        if (this.onFacesDetected) {
+          this.onFacesDetected(faces);
+        }
+      }
+
+      // Notify emotion update listener
+      if (this.onEmotionUpdate) {
+        // console.log('Calling onEmotionUpdate with facialData');
+        this.onEmotionUpdate(facialData);
+      }
+    } catch (error) {
+      console.error('Error handling facial expression data:', error);
+      this.handleError(error as Error);
     }
   }
 

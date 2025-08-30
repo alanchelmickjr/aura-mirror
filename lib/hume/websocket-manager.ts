@@ -251,7 +251,7 @@ export class HumeWebSocketManager {
   }
 
   private handleOpen(): void {
-    console.log('WebSocket connected to Hume');
+    // console.log('WebSocket connected to Hume');
     this.reconnectAttempt = 0;
     this.updateConnectionStatus(ConnectionState.CONNECTED);
     this.startHeartbeat();
@@ -261,7 +261,7 @@ export class HumeWebSocketManager {
   private handleMessage(event: MessageEvent): void {
     try {
       const message: WebSocketMessage = JSON.parse(event.data);
-      console.log('WebSocket message received:', message);
+      // console.log('WebSocket message received:', message);
       
       // Update session ID if provided
       if (message.session_id) {
@@ -300,7 +300,7 @@ export class HumeWebSocketManager {
     
     // Handle Hume facial emotion response format: {face: {...}}
     if ('face' in message && message.face) {
-      console.log('Processing facial emotion data:', message.face);
+      // console.log('Processing facial emotion data:', message.face);
       this.eventHandlers.onFacialExpression?.(message.face);
       return;
     }
@@ -392,7 +392,7 @@ export class HumeWebSocketManager {
   }
 
   private handleClose(event: CloseEvent): void {
-    console.log('WebSocket closed:', event.code, event.reason);
+    // console.log('WebSocket closed:', event.code, event.reason);
     
     this.clearTimers();
     this.ws = null;
@@ -436,7 +436,7 @@ export class HumeWebSocketManager {
       this.config.reconnect.maxDelay
     );
 
-    console.log(`Attempting reconnection ${this.reconnectAttempt}/${this.config.reconnect.maxAttempts} in ${delay}ms`);
+    // console.log(`Attempting reconnection ${this.reconnectAttempt}/${this.config.reconnect.maxAttempts} in ${delay}ms`);
 
     this.reconnectTimer = setTimeout(async () => {
       try {
@@ -505,11 +505,16 @@ export class HumeWebSocketManager {
   private startHeartbeat(): void {
     this.stopHeartbeat();
     
+    // Hume API doesn't require explicit heartbeats
+    // The connection stays alive through regular data messages
+    // Commenting out heartbeat to avoid API validation errors
+    /*
     this.heartbeatTimer = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.send({ type: 'heartbeat' });
       }
     }, 30000); // Send heartbeat every 30 seconds
+    */
   }
 
   private stopHeartbeat(): void {

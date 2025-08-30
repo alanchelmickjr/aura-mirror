@@ -106,20 +106,31 @@ export class PersonSegmentation {
    */
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
+      console.log('PersonSegmentation: Already initialized, skipping');
       return;
     }
 
+    console.log('PersonSegmentation: Starting initialization...');
+
     try {
+      console.log('PersonSegmentation: Importing TensorFlow.js and body-segmentation...');
       // Dynamically import TensorFlow.js and MediaPipe
       const tf = await import('@tensorflow/tfjs');
       const bodySegmentation = await import('@tensorflow-models/body-segmentation');
+      console.log('PersonSegmentation: Imports successful');
       
-      // Set WebGL backend if enabled
+      // Set backend
       if (this.config.enableWebGL) {
+        console.log('PersonSegmentation: Setting WebGL backend...');
         await tf.setBackend('webgl');
+      } else {
+        console.log('PersonSegmentation: Forcing CPU backend...');
+        await tf.setBackend('cpu');
+        console.log('PersonSegmentation: CPU backend set successfully');
       }
 
       // Create segmentation model
+      console.log('PersonSegmentation: Creating segmentation model...');
       const model = bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation;
       const segmenterConfig = {
         runtime: 'tfjs' as const,
@@ -127,12 +138,13 @@ export class PersonSegmentation {
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
       };
 
+      console.log('PersonSegmentation: Model config:', segmenterConfig);
       this.segmentationModel = await bodySegmentation.createSegmenter(model, segmenterConfig);
       this.isInitialized = true;
       
-      console.log('Person segmentation initialized successfully');
+      console.log('PersonSegmentation: Initialization completed successfully!');
     } catch (error) {
-      console.error('Failed to initialize person segmentation:', error);
+      console.error('PersonSegmentation: Initialization failed:', error);
       throw error;
     }
   }
@@ -282,17 +294,36 @@ export class PersonSegmentation {
     source: HTMLVideoElement | HTMLCanvasElement | ImageData,
     emotionData?: EmotionData
   ): Promise<SegmentationResult> {
+    console.log('PersonSegmentation: processFrame called');
+    console.log('PersonSegmentation: isInitialized:', this.isInitialized, 'isProcessing:', this.isProcessing);
+    
     if (!this.isInitialized || this.isProcessing) {
+      console.log('PersonSegmentation: Segmentation not ready, throwing error');
       throw new Error('Segmentation not ready');
     }
 
+    console.log('PersonSegmentation: Starting frame processing...');
+    
+    // Validate video element dimensions
+    if (source instanceof HTMLVideoElement) {
+      if (source.videoWidth === 0 || source.videoHeight === 0) {
+        console.warn('PersonSegmentation: Video element has zero dimensions:', {
+          videoWidth: source.videoWidth,
+          videoHeight: source.videoHeight,
+          readyState: source.readyState
+        });
+        throw new Error('Video element has invalid dimensions');
+      }
+      console.log('PersonSegmentation: Video dimensions:', source.videoWidth, 'x', source.videoHeight);
+    }
+    
     this.isProcessing = true;
     const startTime = performance.now();
 
     try {
       // Update canvas sizes if needed
-      const width = source instanceof ImageData ? source.width : source.width;
-      const height = source instanceof ImageData ? source.height : source.height;
+      const width = source instanceof ImageData ? source.width : source instanceof HTMLVideoElement ? source.videoWidth : source.width;
+      const height = source instanceof ImageData ? source.height : source instanceof HTMLVideoElement ? source.videoHeight : source.height;
       
       if (this.inputCanvas.width !== width || this.inputCanvas.height !== height) {
         this.resizeCanvases(width, height);
@@ -414,25 +445,50 @@ export class PersonSegmentation {
     image: HTMLCanvasElement,
     mask: ImageData
   ): Promise<HTMLCanvasElement> {
-    // Draw original image
-    this.outputCtx.drawImage(image, 0, 0);
+    console.log('PersonSegmentation: Applying Canvas2D effects with black background');
+    console.log('PersonSegmentation: Image size:', image.width, 'x', image.height);
+    console.log('PersonSegmentation: Mask size:', mask.width, 'x', mask.height);
     
-    // Apply background blur
-    if (this.config.backgroundBlurAmount > 0) {
-      // Create blurred version
-      this.blurCtx.filter = `blur(${this.config.backgroundBlurAmount}px)`;
-      this.blurCtx.drawImage(image, 0, 0);
-      
-      // Draw mask to mask canvas
-      this.maskCtx.putImageData(mask, 0, 0);
-      
-      // Composite: draw blurred background where mask is transparent
-      this.outputCtx.globalCompositeOperation = 'destination-over';
-      this.outputCtx.drawImage(this.blurCanvas, 0, 0);
-      
-      // Restore composite operation
-      this.outputCtx.globalCompositeOperation = 'source-over';
+    // Clear output canvas with black background
+    this.outputCtx.fillStyle = 'black';
+    this.outputCtx.fillRect(0, 0, this.outputCanvas.width, this.outputCanvas.height);
+    console.log('PersonSegmentation: Filled background with black');
+    
+    // Create a temporary canvas to apply the mask
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d')!;
+    tempCanvas.width = this.outputCanvas.width;
+    tempCanvas.height = this.outputCanvas.height;
+    
+    // Draw the original image
+    tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Apply the mask - only show the person
+    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const pixels = imageData.data;
+    const maskData = mask.data;
+    
+    let personPixels = 0;
+    let backgroundPixels = 0;
+    
+    // Apply mask: make background transparent
+    for (let i = 0; i < maskData.length; i += 4) {
+      const maskValue = maskData[i]; // Red channel of mask (grayscale)
+      if (maskValue < 128) { // Background pixel (mask is typically 0-255)
+        pixels[i + 3] = 0; // Set alpha to 0 (transparent)
+        backgroundPixels++;
+      } else {
+        personPixels++;
+      }
     }
+    
+    console.log('PersonSegmentation: Person pixels:', personPixels, 'Background pixels:', backgroundPixels);
+    
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    // Draw the masked person onto the black background
+    this.outputCtx.drawImage(tempCanvas, 0, 0);
+    console.log('PersonSegmentation: Applied segmentation with black background');
 
     // Apply emotion-based colorization
     if (this.config.enableColorization && this.currentAuraColor) {
