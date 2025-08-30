@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
       case 'get-config':
         return handleGetConfig()
       
+      case 'get-api-key':
+        return handleGetApiKey()
+      
       default:
         return NextResponse.json(
           { error: 'Invalid action' },
@@ -303,6 +306,30 @@ async function handleGetConfig() {
       { error: 'Failed to fetch configuration' },
       { status: 500 }
     )
+  }
+}
+
+// Get API key for client-side WebSocket connections
+async function handleGetApiKey() {
+  try {
+    const apiKey = process.env.HUME_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'API key not configured' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      apiKey
+    });
+  } catch (error) {
+    console.error('API key fetch error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch API key' },
+      { status: 500 }
+    );
   }
 }
 

@@ -146,6 +146,11 @@ export function useWakeWord(options: UseWakeWordOptions = {}): UseWakeWordReturn
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         
         const response = await fetch(soundUrl);
+        if (!response.ok) {
+          console.warn(`Wake word audio file not found: ${soundUrl}. Sound feedback will be disabled.`);
+          return;
+        }
+        
         const arrayBuffer = await response.arrayBuffer();
         audioBufferRef.current = await audioContextRef.current.decodeAudioData(arrayBuffer);
       } catch (err) {
