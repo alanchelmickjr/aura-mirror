@@ -37,11 +37,102 @@ const DEFAULT_RECONNECT_CONFIG = {
 };
 
 /**
- * Get Hume configuration from environment variables
+ * Get client-safe Hume configuration (no sensitive keys)
+ */
+export function getClientHumeConfig(): HumeConfig {
+  // Client-side config without sensitive keys
+  const configId = process.env.NEXT_PUBLIC_HUME_CONFIG_ID;
+  const configVersion = process.env.NEXT_PUBLIC_HUME_CONFIG_VERSION 
+    ? parseInt(process.env.NEXT_PUBLIC_HUME_CONFIG_VERSION, 10) 
+    : undefined;
+
+  // Determine which WebSocket URL to use based on features
+  const useEVI2 = process.env.NEXT_PUBLIC_HUME_USE_EVI2 === 'true';
+  const websocketUrl = useEVI2 
+    ? process.env.NEXT_PUBLIC_HUME_WEBSOCKET_URL || HUME_EVI2_WEBSOCKET_URL
+    : process.env.NEXT_PUBLIC_HUME_WEBSOCKET_URL || HUME_WEBSOCKET_URL;
+
+  // Parse enabled features from environment
+  const enabledFeatures = {
+    emotions: process.env.NEXT_PUBLIC_HUME_ENABLE_EMOTIONS !== 'false',
+    prosody: process.env.NEXT_PUBLIC_HUME_ENABLE_PROSODY !== 'false',
+    facial: process.env.NEXT_PUBLIC_HUME_ENABLE_FACIAL !== 'false',
+    vocalBursts: process.env.NEXT_PUBLIC_HUME_ENABLE_VOCAL_BURSTS !== 'false',
+    speech: process.env.NEXT_PUBLIC_HUME_ENABLE_SPEECH !== 'false',
+    evi2: useEVI2,
+  };
+
+  // Parse EVI2 configuration if enabled
+  let evi2Config: EVI2Config | undefined;
+  if (enabledFeatures.evi2) {
+    evi2Config = {
+      ...DEFAULT_EVI2_CONFIG,
+      voice_id: process.env.NEXT_PUBLIC_HUME_VOICE_ID,
+      language: process.env.NEXT_PUBLIC_HUME_LANGUAGE || DEFAULT_EVI2_CONFIG.language,
+      model: (process.env.NEXT_PUBLIC_HUME_AI_MODEL as EVI2Config['model']) || DEFAULT_EVI2_CONFIG.model,
+      system_prompt: process.env.NEXT_PUBLIC_HUME_SYSTEM_PROMPT,
+      temperature: process.env.NEXT_PUBLIC_HUME_TEMPERATURE 
+        ? parseFloat(process.env.NEXT_PUBLIC_HUME_TEMPERATURE)
+        : DEFAULT_EVI2_CONFIG.temperature,
+      max_tokens: process.env.NEXT_PUBLIC_HUME_MAX_TOKENS
+        ? parseInt(process.env.NEXT_PUBLIC_HUME_MAX_TOKENS, 10)
+        : DEFAULT_EVI2_CONFIG.max_tokens,
+      enable_emotions: process.env.NEXT_PUBLIC_HUME_EVI2_EMOTIONS !== 'false',
+      enable_interruptions: process.env.NEXT_PUBLIC_HUME_EVI2_INTERRUPTIONS !== 'false',
+    };
+  }
+
+  // Parse audio configuration
+  const audioConfig = {
+    sampleRate: process.env.NEXT_PUBLIC_HUME_SAMPLE_RATE
+      ? parseInt(process.env.NEXT_PUBLIC_HUME_SAMPLE_RATE, 10)
+      : DEFAULT_AUDIO_CONFIG.sampleRate,
+    encoding: (process.env.NEXT_PUBLIC_HUME_AUDIO_ENCODING as 'linear16' | 'mulaw' | 'opus') 
+      || DEFAULT_AUDIO_CONFIG.encoding,
+    channels: process.env.NEXT_PUBLIC_HUME_AUDIO_CHANNELS
+      ? parseInt(process.env.NEXT_PUBLIC_HUME_AUDIO_CHANNELS, 10)
+      : DEFAULT_AUDIO_CONFIG.channels,
+  };
+
+  // Parse reconnection configuration
+  const reconnectConfig = {
+    enabled: process.env.NEXT_PUBLIC_HUME_RECONNECT_ENABLED !== 'false',
+    maxAttempts: process.env.NEXT_PUBLIC_HUME_RECONNECT_MAX_ATTEMPTS
+      ? parseInt(process.env.NEXT_PUBLIC_HUME_RECONNECT_MAX_ATTEMPTS, 10)
+      : DEFAULT_RECONNECT_CONFIG.maxAttempts,
+    initialDelay: process.env.NEXT_PUBLIC_HUME_RECONNECT_INITIAL_DELAY
+      ? parseInt(process.env.NEXT_PUBLIC_HUME_RECONNECT_INITIAL_DELAY, 10)
+      : DEFAULT_RECONNECT_CONFIG.initialDelay,
+    maxDelay: process.env.NEXT_PUBLIC_HUME_RECONNECT_MAX_DELAY
+      ? parseInt(process.env.NEXT_PUBLIC_HUME_RECONNECT_MAX_DELAY, 10)
+      : DEFAULT_RECONNECT_CONFIG.maxDelay,
+    backoffMultiplier: process.env.NEXT_PUBLIC_HUME_RECONNECT_BACKOFF
+      ? parseFloat(process.env.NEXT_PUBLIC_HUME_RECONNECT_BACKOFF)
+      : DEFAULT_RECONNECT_CONFIG.backoffMultiplier,
+  };
+
+  const config: HumeConfig = {
+    apiKey: '', // Empty for client-side - will be fetched from server
+    secretKey: '', // Empty for client-side security
+    configId,
+    configVersion,
+    websocketUrl,
+    restApiUrl: process.env.NEXT_PUBLIC_HUME_REST_API_URL || HUME_REST_API_URL,
+    enabledFeatures,
+    evi2Config,
+    reconnect: reconnectConfig,
+    audio: audioConfig,
+  };
+
+  return config;
+}
+
+/**
+ * Get Hume configuration from environment variables (server-side)
  */
 export function getHumeConfig(): HumeConfig {
-  // Read from environment variables
-  const apiKey = process.env.NEXT_PUBLIC_HUME_API_KEY || '';
+  // Read from environment variables (server-side only)
+  const apiKey = process.env.HUME_API_KEY || process.env.NEXT_PUBLIC_HUME_API_KEY || '';
   const secretKey = process.env.HUME_SECRET_KEY || '';
   const configId = process.env.NEXT_PUBLIC_HUME_CONFIG_ID;
   const configVersion = process.env.NEXT_PUBLIC_HUME_CONFIG_VERSION 
@@ -135,13 +226,13 @@ export function getHumeConfig(): HumeConfig {
 export function validateConfig(config: HumeConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  // Check required API key
-  if (!config.apiKey) {
-    errors.push('Hume API key is required (NEXT_PUBLIC_HUME_API_KEY)');
+  // Check required API key (only for server-side configs)
+  if (!config.apiKey && typeof window === 'undefined') {
+    errors.push('Hume API key is required (HUME_API_KEY)');
   }
 
-  // Check secret key for certain operations
-  if (config.enabledFeatures.evi2 && !config.secretKey) {
+  // Check secret key for certain operations (only for server-side configs)
+  if (config.enabledFeatures.evi2 && !config.secretKey && typeof window === 'undefined') {
     errors.push('Hume secret key is required for EVI2 features (HUME_SECRET_KEY)');
   }
 
@@ -222,11 +313,15 @@ export function getAuthHeaders(config: HumeConfig): Record<string, string> {
 /**
  * Build WebSocket URL with query parameters
  */
-export function buildWebSocketUrl(config: HumeConfig): string {
+export function buildWebSocketUrl(config: HumeConfig, apiKey?: string): string {
   const url = new URL(config.websocketUrl || HUME_WEBSOCKET_URL);
 
-  // Add API key as query parameter
-  url.searchParams.set('api_key', config.apiKey);
+  // Add API key as query parameter (use provided key or config key)
+  const keyToUse = apiKey || config.apiKey;
+  if (!keyToUse) {
+    throw new Error('API key is required for WebSocket connection');
+  }
+  url.searchParams.set('api_key', keyToUse);
 
   // Add config ID if provided
   if (config.configId) {
@@ -283,6 +378,52 @@ export function createDefaultConfig(apiKey: string, secretKey?: string): HumeCon
     reconnect: DEFAULT_RECONNECT_CONFIG,
     audio: DEFAULT_AUDIO_CONFIG,
   };
+}
+
+/**
+ * Fetch authentication token from server (client-side)
+ */
+export async function fetchHumeToken(): Promise<{ token: string; apiKey: string } | null> {
+  try {
+    const response = await fetch('/api/hume', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'refresh-token' }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch Hume token:', response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Also fetch the API key for WebSocket URL building
+    const configResponse = await fetch('/api/hume', {
+      method: 'POST', 
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'get-api-key' }),
+    });
+
+    if (!configResponse.ok) {
+      console.error('Failed to fetch API key:', configResponse.statusText);
+      return null;
+    }
+
+    const configData = await configResponse.json();
+
+    return {
+      token: data.token,
+      apiKey: configData.apiKey,
+    };
+  } catch (error) {
+    console.error('Error fetching Hume token:', error);
+    return null;
+  }
 }
 
 /**

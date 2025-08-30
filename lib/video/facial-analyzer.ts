@@ -224,19 +224,12 @@ export class FacialAnalyzer {
 
       // Send frame to Hume for analysis
       if (this.wsManager?.isConnected()) {
-        const message: Partial<WebSocketMessage> = {
-          type: 'facial_expression' as any,
-          data: {
-            image: base64Data,
-            config: {
-              max_faces: this.config.maxFaces,
-              min_confidence: this.config.minConfidence,
-              include_landmarks: this.config.enableLandmarks,
-              include_head_pose: this.config.enableHeadPose,
-              include_gaze: this.config.enableGaze
-            }
+        const message = {
+          data: base64Data,
+          models: {
+            face: {}
           }
-        } as any;
+        };
 
         this.wsManager.send(message);
       }
@@ -318,9 +311,39 @@ export class FacialAnalyzer {
   /**
    * Handle facial expression data from Hume
    */
-  private handleFacialExpression(data: FacialExpression): void {
+  private handleFacialExpression(data: any): void {
+    console.log('Raw facial data from Hume:', JSON.stringify(data, null, 2));
+    
+    // Extract emotions from Hume's response format
+    let emotions: any[] = [];
+    if (data.predictions && data.predictions.length > 0) {
+      // Hume format: {predictions: [{emotions: [...]}]}
+      emotions = data.predictions[0].emotions || [];
+    } else if (data.emotions) {
+      // Direct emotions format
+      emotions = data.emotions;
+    }
+    
+    console.log('Extracted emotions:', emotions);
+    
+    // Convert to expected format
+    const facialData = {
+      emotions: emotions,
+      timestamp: Date.now(),
+      action_units: {},
+      head_pose: { pitch: 0, yaw: 0, roll: 0 },
+      gaze_direction: { x: 0, y: 0 }
+    };
+    
     // Process emotions
-    const processedEmotions = this.emotionProcessor.processFacialData(data);
+    const processedEmotions = this.emotionProcessor.processFacialData(facialData);
+    console.log('Processed emotions:', processedEmotions);
+    
+    // Notify emotion update listener
+    if (this.onEmotionUpdate) {
+      console.log('Calling onEmotionUpdate with facialData');
+      this.onEmotionUpdate(facialData);
+    }
     
     // Update face cache with emotion data
     if (this.faceCache.size > 0) {

@@ -537,6 +537,11 @@ export class EmotionProcessor {
   // ============= Private Methods =============
 
   private normalizeEmotions(emotions: EmotionScore[]): EmotionScore[] {
+    if (!emotions || !Array.isArray(emotions)) {
+      console.warn('Invalid emotions array:', emotions);
+      return [];
+    }
+    
     const total = emotions.reduce((sum, e) => sum + e.score, 0);
     
     if (total === 0) {

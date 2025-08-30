@@ -56,6 +56,7 @@ export function VideoProcessor({
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
 
   // Processing modules
   const facialAnalyzerRef = useRef<FacialAnalyzer | null>(null);
@@ -77,51 +78,151 @@ export function VideoProcessor({
   const [detectedFaces, setDetectedFaces] = useState<FaceDetectionResult[]>([]);
 
   /**
+   * Get the best available camera device (prefer built-in Mac camera)
+   */
+  const getBestCameraDevice = async (): Promise<string | undefined> => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      
+      console.log('Available video devices:', videoDevices.map(d => ({
+        deviceId: d.deviceId,
+        label: d.label,
+        kind: d.kind
+      })));
+
+      // Priority order for Mac cameras
+      const preferences = [
+        'facetime', // FaceTime HD Camera
+        'built-in', // Built-in camera
+        'integrated', // Integrated camera
+        'default' // Default camera
+      ];
+
+      // Find the best camera based on label keywords
+      for (const preference of preferences) {
+        const device = videoDevices.find(device => 
+          device.label.toLowerCase().includes(preference)
+        );
+        if (device) {
+          console.log(`Selected camera: ${device.label} (${device.deviceId})`);
+          return device.deviceId;
+        }
+      }
+
+      // If no preferred camera found, use the first available one that's not a phone
+      const nonPhoneDevice = videoDevices.find(device => 
+        !device.label.toLowerCase().includes('iphone') &&
+        !device.label.toLowerCase().includes('phone')
+      );
+
+      if (nonPhoneDevice) {
+        console.log(`Selected fallback camera: ${nonPhoneDevice.label}`);
+        return nonPhoneDevice.deviceId;
+      }
+
+      // Last resort: use the first device
+      if (videoDevices.length > 0) {
+        console.log(`Using first available camera: ${videoDevices[0].label}`);
+        return videoDevices[0].deviceId;
+      }
+
+      return undefined;
+    } catch (error) {
+      console.error('Failed to enumerate devices:', error);
+      return undefined;
+    }
+  };
+
+  /**
    * Initialize camera and processing modules
    */
   const initialize = useCallback(async () => {
+    console.log('VideoProcessor: Starting initialization...');
+    
+    // First, test if we can access navigator.mediaDevices
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error('VideoProcessor: getUserMedia not supported');
+      setState(prev => ({ ...prev, error: 'Camera not supported in this browser' }));
+      return;
+    }
+    
     try {
       setState(prev => ({ ...prev, error: null }));
 
-      // Request camera access
+      // Use simple camera constraints like SimpleCamera
+      console.log('VideoProcessor: Requesting basic camera access...');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          facingMode: 'user',
-          frameRate: { ideal: 30 }
-        },
+        video: true,
         audio: false
       });
+
+      console.log('VideoProcessor: Camera stream obtained:', stream.getVideoTracks()[0]?.label);
 
       streamRef.current = stream;
 
       // Set up video element
+      console.log('VideoProcessor: Setting up video element...');
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        console.log('VideoProcessor: Starting video playback...');
         await videoRef.current.play();
         
-        // Wait for video to be ready
-        await new Promise((resolve) => {
+        // Wait for video to be ready with timeout
+        console.log('VideoProcessor: Waiting for video metadata...');
+        await new Promise((resolve, reject) => {
           if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => resolve(undefined);
+            const video = videoRef.current;
+            
+            // Set up success handler
+            const onMetadata = () => {
+              console.log('VideoProcessor: Video metadata loaded, dimensions:', 
+                video.videoWidth, 'x', video.videoHeight);
+              video.removeEventListener('loadedmetadata', onMetadata);
+              clearTimeout(timeout);
+              resolve(undefined);
+            };
+            
+            // Set up timeout
+            const timeout = setTimeout(() => {
+              console.warn('VideoProcessor: Metadata timeout, proceeding anyway...');
+              video.removeEventListener('loadedmetadata', onMetadata);
+              resolve(undefined);
+            }, 5000); // 5 second timeout
+            
+            // Check if metadata is already loaded
+            if (video.readyState >= 1) {
+              console.log('VideoProcessor: Video metadata already loaded');
+              clearTimeout(timeout);
+              resolve(undefined);
+            } else {
+              video.addEventListener('loadedmetadata', onMetadata);
+            }
+          } else {
+            reject(new Error('Video element not found'));
           }
         });
 
-        // Set canvas sizes
-        if (canvasRef.current && videoRef.current) {
-          canvasRef.current.width = videoRef.current.videoWidth;
-          canvasRef.current.height = videoRef.current.videoHeight;
+        // Set canvas sizes with fallback dimensions
+        const videoWidth = videoRef.current?.videoWidth || 640;
+        const videoHeight = videoRef.current?.videoHeight || 480;
+        
+        console.log('VideoProcessor: Setting canvas dimensions:', videoWidth, 'x', videoHeight);
+        
+        if (canvasRef.current) {
+          canvasRef.current.width = videoWidth;
+          canvasRef.current.height = videoHeight;
         }
 
-        if (overlayCanvasRef.current && videoRef.current) {
-          overlayCanvasRef.current.width = videoRef.current.videoWidth;
-          overlayCanvasRef.current.height = videoRef.current.videoHeight;
+        if (overlayCanvasRef.current) {
+          overlayCanvasRef.current.width = videoWidth;
+          overlayCanvasRef.current.height = videoHeight;
         }
       }
 
       // Initialize facial analyzer
       if (enableFacialAnalysis && (apiKey || wsManager)) {
+        console.log('VideoProcessor: Initializing facial analysis...');
         facialAnalyzerRef.current = new FacialAnalyzer({
           apiKey: apiKey || '',
           frameRate: 10,
@@ -135,10 +236,14 @@ export function VideoProcessor({
         if (videoRef.current) {
           await facialAnalyzerRef.current.initialize(videoRef.current, wsManager);
         }
+        console.log('VideoProcessor: Facial analysis initialized');
+      } else {
+        console.log('VideoProcessor: Skipping facial analysis (disabled or no API key)');
       }
 
       // Initialize person segmentation
       if (enableSegmentation) {
+        console.log('VideoProcessor: Initializing segmentation...');
         segmentationRef.current = new PersonSegmentation({
           modelType: 'general',
           smoothSegmentation: true,
@@ -150,8 +255,12 @@ export function VideoProcessor({
         });
 
         await segmentationRef.current.initialize();
+        console.log('VideoProcessor: Segmentation initialized');
+      } else {
+        console.log('VideoProcessor: Skipping segmentation (disabled)');
       }
 
+      console.log('VideoProcessor: Initialization complete!');
       setState(prev => ({
         ...prev,
         isInitialized: true,
@@ -160,9 +269,52 @@ export function VideoProcessor({
 
     } catch (error) {
       console.error('Failed to initialize video processor:', error);
+      
+      let errorMessage = 'Failed to initialize camera';
+      
+      if (error instanceof Error) {
+        // Handle specific camera errors
+        if (error.name === 'NotFoundError' || error.name === 'DeviceNotFoundError') {
+          errorMessage = 'Camera not found. Please check if your camera is connected and not being used by another application.';
+        } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage = 'Camera permission denied. Please allow camera access and refresh the page.';
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          errorMessage = 'Camera is already in use by another application. Please close other applications using the camera and try again.';
+        } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+          // Try fallback with simpler constraints
+          console.log('Retrying with fallback constraints...');
+          try {
+            const fallbackStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
+            
+            streamRef.current = fallbackStream;
+            
+            // Continue with fallback stream setup
+            if (videoRef.current) {
+              videoRef.current.srcObject = fallbackStream;
+              await videoRef.current.play();
+              
+              setState(prev => ({
+                ...prev,
+                isInitialized: true,
+                isCameraActive: true,
+                error: 'Using fallback camera settings'
+              }));
+              return;
+            }
+          } catch (fallbackError) {
+            errorMessage = 'Camera constraints not supported. Your camera may not support the requested resolution.';
+          }
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       setState(prev => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to initialize'
+        error: errorMessage
       }));
     }
   }, [apiKey, wsManager, enableFacialAnalysis, enableSegmentation, enableEffects]);
@@ -171,8 +323,11 @@ export function VideoProcessor({
    * Start processing video frames
    */
   const startProcessing = useCallback(() => {
+    console.log('VideoProcessor: startProcessing called, isInitialized:', state.isInitialized, 'isProcessing:', state.isProcessing);
     if (!state.isInitialized || state.isProcessing) return;
 
+    console.log('VideoProcessor: Starting video processing...');
+    isProcessingRef.current = true;
     setState(prev => ({ ...prev, isProcessing: true }));
 
     // Start facial analysis
@@ -195,7 +350,10 @@ export function VideoProcessor({
 
     // Start render loop
     const render = async () => {
-      if (!state.isProcessing) return;
+      if (!isProcessingRef.current) {
+        console.log('VideoProcessor: Render stopped, not processing');
+        return;
+      }
 
       try {
         await processFrame();
@@ -206,6 +364,7 @@ export function VideoProcessor({
       animationFrameRef.current = requestAnimationFrame(render);
     };
 
+    console.log('VideoProcessor: Starting render loop...');
     render();
   }, [state.isInitialized, state.isProcessing]);
 
@@ -213,10 +372,21 @@ export function VideoProcessor({
    * Process a single video frame
    */
   const processFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      console.log('VideoProcessor: processFrame - missing refs, video:', !!videoRef.current, 'canvas:', !!canvasRef.current);
+      return;
+    }
 
     const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.log('VideoProcessor: processFrame - no 2d context');
+      return;
+    }
+
+    // Log occasionally for debugging
+    if (Math.random() < 0.01) { // Log ~1% of frames
+      console.log('VideoProcessor: Drawing frame...');
+    }
 
     // Apply person segmentation if enabled
     if (segmentationRef.current && enableSegmentation) {
@@ -284,7 +454,9 @@ export function VideoProcessor({
    * Handle emotion updates from facial analysis
    */
   const handleEmotionUpdate = (emotions: FacialExpression) => {
+    console.log('VideoProcessor: handleEmotionUpdate called with:', emotions);
     const processedEmotions = emotionProcessorRef.current.processFacialData(emotions);
+    console.log('VideoProcessor: processedEmotions:', processedEmotions);
     
     // Update emotion display
     const topEmotions = processedEmotions.emotions
@@ -296,6 +468,7 @@ export function VideoProcessor({
         color: getEmotionColor(e.name)
       }));
     
+    console.log('VideoProcessor: topEmotions:', topEmotions);
     setCurrentEmotions(topEmotions);
     setDominantEmotion(processedEmotions.dominantEmotion || 'neutral');
     
@@ -305,6 +478,7 @@ export function VideoProcessor({
     
     // Notify parent component
     if (onEmotionUpdate) {
+      console.log('VideoProcessor: Calling onEmotionUpdate prop');
       onEmotionUpdate(processedEmotions);
     }
   };
@@ -387,6 +561,7 @@ export function VideoProcessor({
    * Stop processing
    */
   const stopProcessing = useCallback(() => {
+    isProcessingRef.current = false;
     setState(prev => ({ ...prev, isProcessing: false }));
 
     if (facialAnalyzerRef.current) {
@@ -429,9 +604,22 @@ export function VideoProcessor({
 
   // Initialize on mount
   useEffect(() => {
-    initialize();
-    return cleanup;
-  }, []);
+    console.log('VideoProcessor: useEffect triggered, calling initialize');
+    const initAsync = async () => {
+      try {
+        await initialize();
+      } catch (err) {
+        console.error('VideoProcessor: Initialize failed in useEffect:', err);
+      }
+    };
+    
+    initAsync();
+    
+    return () => {
+      console.log('VideoProcessor: Component unmounting, cleaning up');
+      cleanup();
+    };
+  }, []); // Empty dependency array to run only on mount
 
   // Start processing when initialized
   useEffect(() => {

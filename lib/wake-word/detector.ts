@@ -377,10 +377,17 @@ export class WakeWordDetector {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
       const response = await fetch(this.config.soundUrl);
+      if (!response.ok) {
+        console.warn(`Audio file not found: ${this.config.soundUrl}. Sound will be disabled.`);
+        return;
+      }
+      
       const arrayBuffer = await response.arrayBuffer();
       this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
     } catch (error) {
       console.error('Failed to preload audio:', error);
+      // Disable sound on error
+      this.config.playSound = false;
     }
   }
 

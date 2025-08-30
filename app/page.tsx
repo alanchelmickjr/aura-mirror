@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { VoiceInterface } from "@/components/voice-interface"
 import { VideoProcessor } from "@/components/video-processor"
+import { SimpleCamera } from "@/components/simple-camera"
 import { AuraVisualization } from "@/components/aura-visualization"
 import { useHumeVoice } from "@/hooks/use-hume-voice"
 import { useWakeWord } from "@/hooks/use-wake-word"
@@ -52,7 +53,27 @@ export default function AuraMirror() {
   } = useHumeVoice()
   
   const { isListening, detected } = useWakeWord({ wakePhrase: "mirror mirror on the wall" })
-  const { emotions: facialEmotions, isProcessing } = useFacialEmotions()
+  const { 
+    emotions: facialEmotions, 
+    isProcessing,
+    currentEmotions,
+    dominantEmotion,
+    auraColor,
+    emotionTrends,
+    isInitialized: facialInitialized 
+  } = useFacialEmotions({
+    wsManager: wsManager || undefined,
+    autoStart: true,
+    frameRate: 5, // Lower frame rate for better performance
+    onEmotionChange: (emotions) => {
+      console.log('Facial emotions detected:', emotions);
+      const formattedEmotions = emotions.emotions.map((e: any) => ({
+        emotion: e.name,
+        score: e.score
+      }));
+      updateFromEmotions(formattedEmotions);
+    }
+  })
 
   // Emotion to color mapping
   const emotionColors: Record<string, string> = {
@@ -103,13 +124,15 @@ export default function AuraMirror() {
   useEffect(() => {
     const initializeHume = async () => {
       try {
-        // Get API key from environment variables (client-side)
-        const apiKey = typeof window !== 'undefined'
-          ? window.location.hostname === 'localhost'
-            ? 'test-api-key' // Use test key for local development
-            : ''
-          : ''
-        const configId = typeof window !== 'undefined' ? '' : ''
+        // Get API key from environment variable (client-side)
+        const apiKey = process.env.NEXT_PUBLIC_HUME_API_KEY;
+        
+        if (!apiKey) {
+          console.error('NEXT_PUBLIC_HUME_API_KEY not found in environment variables');
+          return;
+        }
+        
+        const configId = ''
         
         // Create proper HumeConfig object
         const config = {
@@ -253,11 +276,14 @@ export default function AuraMirror() {
   }, [isConnected, disconnect])
 
   const updateFromEmotions = (emotions: Array<{ emotion: string; score: number }>) => {
+    console.log('Page: updateFromEmotions called with:', emotions);
     const processed = emotions.map(e => ({
       name: e.emotion,
       score: e.score,
       color: emotionColors[e.emotion] || "#6366f1"
     }))
+    
+    console.log('Page: processed emotions:', processed);
     
     setProcessedEmotions((prev: ProcessedEmotion[]) => {
       // Merge with existing emotions, prioritizing new ones
@@ -267,7 +293,9 @@ export default function AuraMirror() {
           merged.push({ ...existing, score: existing.score * 0.8 }) // Decay old emotions
         }
       })
-      return merged.slice(0, 5) // Keep top 5
+      const result = merged.slice(0, 5); // Keep top 5
+      console.log('Page: Updated processedEmotions to:', result);
+      return result;
     })
   }
 
@@ -385,153 +413,76 @@ export default function AuraMirror() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-card to-background overflow-hidden relative">
-      {/* Magical Background Particles */}
-      <div className="absolute inset-0 pointer-events-none">
-        {auraState.particles.map((particle: any) => (
-          <div
-            key={particle.id}
-            className="absolute rounded-full particle-float opacity-60"
-            style={{
-              left: `${particle.x}%`,
-              top: `${particle.y}%`,
-              width: `${particle.size}px`,
-              height: `${particle.size}px`,
-              backgroundColor: particle.color,
-              boxShadow: `0 0 ${particle.size * 2}px ${particle.color}`,
-              animationDelay: `${Math.random() * 6}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Main Mirror Interface */}
-      <div className="flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8 relative z-10">
-        {/* Mirror Title */}
-        <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent mb-2 sm:mb-4">
-            Aura Mirror
-          </h1>
-          <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-4">
-            Say "Mirror Mirror on the Wall" to begin your magical journey
-          </p>
-        </div>
-
-        {/* Main Mirror Display */}
-        <Card className="mirror-frame p-4 sm:p-6 lg:p-8 max-w-sm sm:max-w-2xl lg:max-w-4xl w-full relative overflow-hidden">
-          {/* Video Feed with Processor */}
-          <div className="relative aspect-video rounded-xl sm:rounded-2xl overflow-hidden mb-4 sm:mb-6">
-            <VideoProcessor
-              className="w-full h-full"
-            />
-
-            {/* Aura Overlay */}
-            <AuraVisualization 
-              emotions={processedEmotions}
-              intensity={auraState.intensity}
-            />
-
-            {/* Emotion Indicators */}
-            <div className="absolute top-2 sm:top-4 left-2 sm:left-4 space-y-1 sm:space-y-2">
-              {processedEmotions.slice(0, 3).map((emotion: ProcessedEmotion) => (
-                <div
-                  key={emotion.name}
-                  className="flex items-center space-x-1 sm:space-x-2 bg-black/50 backdrop-blur-sm rounded-full px-2 sm:px-3 py-1"
+    <div className="w-screen h-screen overflow-hidden bg-black relative">
+      <VideoProcessor
+        className="w-full h-full"
+        wsManager={wsManager || undefined}
+        apiKey={process.env.NEXT_PUBLIC_HUME_API_KEY || ""}
+        enableFacialAnalysis={true}
+        enableSegmentation={false}
+        enableEffects={true}
+        showDebugInfo={true}
+        onEmotionUpdate={(emotions) => {
+          console.log('Page: Emotions from VideoProcessor:', emotions);
+          const formattedEmotions = emotions.emotions.map((e: any) => ({
+            emotion: e.name,
+            score: e.score
+          }));
+          console.log('Page: formattedEmotions:', formattedEmotions);
+          updateFromEmotions(formattedEmotions);
+        }}
+        onFacesDetected={(faces) => {
+          console.log('Faces detected:', faces.length);
+        }}
+      />
+      
+      {/* Emotion Overlay */}
+      <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-4 max-w-xs">
+        <h3 className="text-white text-sm font-semibold mb-2">Detected Emotions</h3>
+        {processedEmotions.length > 0 ? (
+          <div className="space-y-1">
+            {processedEmotions.slice(0, 5).map((emotion, index) => (
+              <div key={emotion.name} className="flex items-center justify-between">
+                <span 
+                  className="text-xs font-medium"
+                  style={{ color: emotion.color }}
                 >
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: emotion.color }} />
-                  <span className="text-white text-xs sm:text-sm capitalize font-medium">{emotion.name}</span>
-                  <div className="w-12 sm:w-16 h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${emotion.score * 100}%`,
-                        backgroundColor: emotion.color,
+                  {emotion.name}
+                </span>
+                <div className="flex items-center ml-2">
+                  <div className="w-16 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full transition-all duration-300"
+                      style={{ 
+                        width: `${Math.min(emotion.score * 100, 100)}%`,
+                        backgroundColor: emotion.color 
                       }}
                     />
                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Prosody Indicator */}
-            {prosodyData && (
-              <div className="absolute top-2 sm:top-4 right-2 sm:right-4 space-y-1 sm:space-y-2">
-                <div className="bg-black/50 backdrop-blur-sm rounded-full px-2 sm:px-3 py-1">
-                  <span className="text-white text-xs sm:text-sm">
-                    Voice: {prosodyData.pitch.mean > 0.5 ? "↑" : "↓"} {Math.round(prosodyData.energy.mean * 100)}%
+                  <span className="text-xs text-gray-300 ml-2 min-w-[2.5rem] text-right">
+                    {(emotion.score * 100).toFixed(1)}%
                   </span>
                 </div>
               </div>
-            )}
-
-            {/* Vocal Burst Indicator */}
-            {vocalBurst && (
-              <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4">
-                <div className="bg-accent/80 backdrop-blur-sm rounded-full px-3 py-1 animate-pulse">
-                  <span className="text-white text-sm capitalize">{vocalBurst.type}</span>
-                </div>
-              </div>
-            )}
+            ))}
           </div>
-
-          {/* Voice Interface for Conversation */}
-          {conversationActive && (
-            <div className="mb-4">
-              <VoiceInterface className="w-full" />
-            </div>
-          )}
-
-          {/* Mirror Message */}
-          <div className="text-center">
-            <div className="magical-gradient p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <p className="text-lg sm:text-xl lg:text-2xl font-semibold text-white mb-1 sm:mb-2">{mirrorMessage}</p>
-              <p className="text-sm sm:text-base text-white/80">
-                Primary Aura: <span className="capitalize font-bold">{auraState.primaryEmotion}</span>
-              </p>
+        ) : (
+          <div className="text-gray-400 text-xs">
+            {facialInitialized ? 'No emotions detected' : 'Initializing...'}
+          </div>
+        )}
+        
+        {dominantEmotion && (
+          <div className="mt-3 pt-2 border-t border-gray-600">
+            <div className="text-xs text-gray-300">Primary Emotion:</div>
+            <div 
+              className="text-sm font-bold"
+              style={{ color: auraColor?.primary || '#6366f1' }}
+            >
+              {dominantEmotion}
             </div>
           </div>
-
-          {/* Decorative Elements */}
-          <div className="absolute top-2 sm:top-4 right-2 sm:right-4">
-            <div className="w-8 h-8 sm:w-12 sm:h-12 lg:w-16 lg:h-16 rounded-full magical-gradient opacity-60 particle-float" />
-          </div>
-          <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4">
-            <div
-              className="w-6 h-6 sm:w-8 sm:h-8 lg:w-12 lg:h-12 rounded-full bg-accent/40 particle-float"
-              style={{ animationDelay: "2s" }}
-            />
-          </div>
-        </Card>
-
-        {/* Status Indicators */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isActive ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
-            <span className="text-xs text-muted-foreground">System</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-yellow-500"} animate-pulse`} />
-            <span className="text-xs text-muted-foreground">Voice AI</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isListening ? "bg-blue-500" : "bg-gray-500"} animate-pulse`} />
-            <span className="text-xs text-muted-foreground">Wake Word</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isProcessing ? "bg-purple-500" : "bg-gray-500"} animate-pulse`} />
-            <span className="text-xs text-muted-foreground">Facial Analysis</span>
-          </div>
-        </div>
-
-        {/* Instructions */}
-        <div className="mt-6 sm:mt-8 text-center max-w-xs sm:max-w-lg lg:max-w-2xl px-4">
-          <p className="text-sm sm:text-base text-muted-foreground">
-            {conversationActive 
-              ? "Speak naturally - the mirror is listening to your voice and watching your expressions..."
-              : "Step into view and say 'Mirror Mirror on the Wall' to activate the magical mirror. Your emotions will create a unique aura!"
-            }
-          </p>
-        </div>
+        )}
       </div>
     </div>
   )

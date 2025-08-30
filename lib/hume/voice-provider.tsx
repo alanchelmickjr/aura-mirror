@@ -8,7 +8,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { HumeWebSocketManager } from './websocket-manager';
 import { EmotionProcessor } from './emotion-processor';
-import { getHumeConfig, validateConfig } from './config';
+import { getClientHumeConfig, validateConfig } from './config';
 import {
   HumeConfig,
   ConnectionStatus,
@@ -118,7 +118,7 @@ export function VoiceProvider({
 
   // Get configuration
   const config = React.useMemo(() => {
-    const baseConfig = getHumeConfig();
+    const baseConfig = getClientHumeConfig();
     return {
       ...baseConfig,
       ...userConfig,

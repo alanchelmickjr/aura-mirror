@@ -15,7 +15,7 @@ import {
   ToolResponseMessage,
   EVI2SessionConfig,
 } from './types';
-import { buildWebSocketUrl, getAuthHeaders } from './config';
+import { buildWebSocketUrl, getAuthHeaders, fetchHumeToken } from './config';
 
 export class HumeWebSocketManager {
   private ws: WebSocket | null = null;
@@ -57,7 +57,13 @@ export class HumeWebSocketManager {
     this.updateConnectionStatus(ConnectionState.CONNECTING);
 
     try {
-      const wsUrl = buildWebSocketUrl(this.config);
+      // Fetch API key from server for WebSocket authentication
+      const authData = await fetchHumeToken();
+      if (!authData) {
+        throw new Error('Failed to fetch authentication credentials');
+      }
+
+      const wsUrl = buildWebSocketUrl(this.config, authData.apiKey);
       this.ws = new WebSocket(wsUrl);
 
       this.setupWebSocketHandlers();
@@ -102,13 +108,8 @@ export class HumeWebSocketManager {
     }
 
     try {
-      const fullMessage: WebSocketMessage = {
-        ...message,
-        timestamp: Date.now(),
-        session_id: this.sessionId || undefined,
-      } as WebSocketMessage;
-
-      this.ws.send(JSON.stringify(fullMessage));
+      // For Hume API, send the message as-is without adding extra fields
+      this.ws.send(JSON.stringify(message));
     } catch (error) {
       console.error('Error sending message:', error);
       this.eventHandlers.onError?.(error as Error);
@@ -260,6 +261,7 @@ export class HumeWebSocketManager {
   private handleMessage(event: MessageEvent): void {
     try {
       const message: WebSocketMessage = JSON.parse(event.data);
+      console.log('WebSocket message received:', message);
       
       // Update session ID if provided
       if (message.session_id) {
@@ -274,7 +276,41 @@ export class HumeWebSocketManager {
     }
   }
 
-  private routeMessage(message: WebSocketMessage): void {
+  private routeMessage(message: any): void {
+    // Handle empty or invalid messages
+    if (!message || typeof message !== 'object') {
+      console.warn('Received invalid WebSocket message:', message);
+      return;
+    }
+    
+    // Handle empty objects
+    if (Object.keys(message).length === 0) {
+      console.debug('Received empty WebSocket message, ignoring');
+      return;
+    }
+    
+    // Handle Hume error format which doesn't have a type field
+    if ('error' in message && !message.type) {
+      const error = new Error(`Hume API Error: ${message.error}`);
+      (error as any).code = (message as any).code;
+      console.error('Hume WebSocket error:', message);
+      this.eventHandlers.onError?.(error);
+      return;
+    }
+    
+    // Handle Hume facial emotion response format: {face: {...}}
+    if ('face' in message && message.face) {
+      console.log('Processing facial emotion data:', message.face);
+      this.eventHandlers.onFacialExpression?.(message.face);
+      return;
+    }
+    
+    // Handle messages with type field (standard format)
+    if (!message.type) {
+      console.warn('Received message without type or face data:', message);
+      return;
+    }
+    
     switch (message.type) {
       case 'emotion':
         if ('emotions' in message) {
